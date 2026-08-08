@@ -1,8 +1,20 @@
 ################################################################################
-# Created 8.8.2026 to match manufacturing shares in China syndrome paper with new 
-# data to make sure we hae the correct measure and extend out the shocks into 2013
-# the second china shock wave. 
+# Creation date: 8.8.2026
+# Author: Sophie Handley
+#
+# Purpose:
+# 1. Reconstruct ADH trade measures from raw UN Comtrade data.
+# 2. Validate the reconstructed series against ADH's released trade data.
+# 3. Once validated, extend the trade series beyond 2007 for the main analysis.
+#
+# Strategy:
+# - Use Schott's detailed HS10 U.S. import data to construct a year-specific
+#   HS6 -> SIC crosswalk.
+# - Map UN Comtrade HS6 imports into SIC industries.
+# - Restrict to the ADH manufacturing SIC universe.
+# - Compare aggregate Chinese import penetration with the ADH series.
 ################################################################################
+
 rm(list = ls())
 library(collapse) 
 library(readxl)
@@ -82,7 +94,6 @@ new <- new |>
   fsummarize(imports = fsum(primaryValue)) |> 
   fmutate(sic = as.integer(sic))
 
-################################################################################
 sh <- dcast(
   new,
   refYear + sic ~ partnerISO,
@@ -91,9 +102,7 @@ sh <- dcast(
 sh <- sh |> fgroup_by(refYear) |> 
   fsummarize(china = fsum(CHN), 
              world = fsum(W00)) |> 
-  fmutate(china_share = china / world )
-
-
+  fmutate(china_share = china / world)
 
 # trade data -> naics for naics level shock ------------------------------------ 
 shock <- data.table(read_stata(paste0(path, "/112670-V1/Public-Release-Data/dta/sic87dd_trade_data.dta")))

@@ -1,4 +1,10 @@
-
+################################################################################
+# Creation date: 8.8.2026 
+# Author: Sophie Handley 
+# Purpose: Confirm that QCEW can replace DD data, confirm instrument construction
+# Using DD data, replicate instrument construction and replace their employment 
+# data with granular QCEW data and replicate results 
+################################################################################
 rm(list = ls())
 library(collapse) 
 library(readxl)
@@ -6,7 +12,6 @@ library(data.table)
 library(fixest)
 library(sf)
 library(haven)
-library(tigris)
 library(ggplot2)
 library(janitor)
 library(dplyr)
@@ -58,8 +63,7 @@ qcew_naics6 <- qcew_naics6 |> fgroup_by(area_fips, industry_code, year) |>
 
 qcew[,naics2 := floor(industry_code/1)]
 
-################################################################################
-# replicate figure 1 in their paper ############################################
+# replicate figure 1 in their paper --------------------------------------------
 qcew[,manufac := as.integer(naics2 %in% c(31, 32, 33))]
 qcew[,total_emp := sum(annual_avg_emplvl), by = .(year)]
 toplot <- qcew |> fgroup_by(manufac, year) |> 
@@ -94,17 +98,14 @@ ggplot(data = toplot, aes(x = year, y = sector_emp))+
   geom_line()+ 
   theme_bw()
 
-################################################################################
 
 # trade data -> naics for naics level shock ------------------------------------ 
-dd <- data.table(read_stata(paste0(path, "/112670-V1/Public-Release-Data/dta/workfile_china.dta")))
 shock <- data.table(read_stata(paste0(path, "/112670-V1/Public-Release-Data/dta/sic87dd_trade_data.dta")))
 fig1 <- data.table(read_stata(paste0(path, "/112670-V1/Public-Release-Data/dta/figure1_data.dta")))
 crosswalk <- data.table(fread(paste0(path, "/my_crosswalk.csv"))) |> clean_names()
 
 # merge in naics 
-# shock <- merge(shock, crosswalk, by.x = "sic87dd", by.y = "sic87")
-# shock[, naics2 := substr(naics12, 1, 2)]
+
 shock[, all_imports := sum(imports), by = .(year)]
 fig1_share <- fig1[, .(year, cpsmanufemppop)]
 
@@ -133,8 +134,8 @@ ggplot(plot_compare_long, aes(x = year, y = value, linetype = var)) +
 
 
 
-################################################################################
-# replicate their measures 
+# Replicate instrument construction using their data ---------------------------
+# replicate their construction using their data 
 # use other country imports 
 # Get Chinese imports for both USA and OTH
 rep <- shock[importer %in% c("USA", "OTH")]
@@ -169,11 +170,10 @@ setnames(rep,
          old = c("USA", "OTH"),
          new = c("Delta_M_US", "Delta_M_OTH"))
 
-# -------------------------------------------------------------------------
-# Baseline QCEW employment weights
+# Create QCEW employment weights -----------------------------------------------
 # 1995 employment -> 1991-2000 shock stored at year 2000
 # 2000 employment -> 2000-2007 shock stored at year 2007
-# -------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 
 qcew_naics6 <- rbindlist(full_qcew6_list)
 qcew_naics6[, industry_code := as.integer(industry_code)]
@@ -224,8 +224,8 @@ instrument <- qcew_rep |>
     IPW_OTH = fsum(IPW_OTH)
   ) |>
   data.table()
-# Get employment outcome -------------------------------------------------------
 
+# Get employment outcome -------------------------------------------------------
 # Use NAICS2 data since manufacturing is identified cleanly there
 qcew_outcome <- rbindlist(full_qcew6_list)
 qcew_outcome[, industry_code := as.integer(industry_code)]
@@ -285,6 +285,8 @@ county_emp[, baseline_emp :=
            by = area_fips
 ]
 
+
+# Regressions ------------------------------------------------------------------
 # Merge onto the two-period instrument
 reg <- merge(
   county_emp,
