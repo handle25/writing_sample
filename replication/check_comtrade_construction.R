@@ -31,7 +31,8 @@ library(dplyr)
 path <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
 setwd(path)
 
-# Create a 1:1 crosswalk hs10 -> naics -----------------------------------------
+# Create a 1:1 crosswalk hs10 -> sic -------------------------------------------
+# using U.S. HS10 import values to select the dominant SIC within each HS6
 weights <- data.table(read_stata(paste0(path, "/peter_schott/imp_detl_yearly_113n/imp_detl_yearly_113n.dta")))
 weights <- rbind(weights, data.table(read_stata(paste0(path, "/peter_schott/imp_detl_yearly_105n/imp_detl_yearly_105n.dta"))), fill = TRUE)
 weights <- rbind(weights, data.table(read_stata(paste0(path, "/peter_schott/imp_detl_yearly_95n/imp_detl_yearly_95n.dta"))), fill = TRUE)
@@ -52,7 +53,7 @@ setorder(cw, year, hs6, -import_value)
 cw_1to1 <- cw[, .SD[1], by = .(year, hs6)]
 
 
-# trade data hs10 -> naics for naics level shock ------------------------------- 
+# trade data hs10 -> sic for sic level shock ----------------------------------- 
 years <- c(1991, 1995, 2000, 2007, 2013)
 shock_list <- vector("list", length(years))
 
@@ -85,6 +86,7 @@ shock[, cmdCode := as.integer(cmdCode)]
 new <- merge(shock, cw_1to1, by.x = c("refYear", "cmdCode"), by.y = c("year", "hs6"), all.x = TRUE)
 new[,sic := as.integer(sic)]
 nrow(new)
+# Restrict to manufacturing SIC industries used in the ADH trade data
 new <- new[sic >= 2011 & sic <= 3999,]
 nrow(new)
 new[reporterISO != "USA", reporterISO := "OTH"]
@@ -104,7 +106,8 @@ sh <- sh |> fgroup_by(refYear) |>
              world = fsum(W00)) |> 
   fmutate(china_share = china / world)
 
-# trade data -> naics for naics level shock ------------------------------------ 
+# trade data -> naics for sic level shock --------------------------------------
+# Load ADH released trade data and construct the same aggregate measure
 shock <- data.table(read_stata(paste0(path, "/112670-V1/Public-Release-Data/dta/sic87dd_trade_data.dta")))
 shock[exporter != "CHN", exporter := "ROW"]
 
