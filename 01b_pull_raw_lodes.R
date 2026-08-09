@@ -1,27 +1,13 @@
-
 rm(list = ls())
 
-library(censusapi)
-library(tidycensus)
 library(data.table)
-library(collapse)
-library(janitor)
-library(tidyr)
-library(dplyr)
-library(stringr)
-library(jsonlite)
-library(httr)
 library(lehdr)
-library(tidygeocoder)
-
 
 path <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data/lodes"
 
-states <- tolower(state.abb) 
-states <- c()
-years <- seq(2002, 2020)
+states <- tolower(state.abb)
+years <- c(2002, 2007, 2013)
 
-available <- list()
 for (s in states) {
   for (y in years) {
     
@@ -54,21 +40,38 @@ for (s in states) {
 }
 
 
-mi_files <- list.files(path, pattern = "^lodes_mi_.*\\.csv$", full.names = TRUE)
 
-file_list <- list()
+# has location county and census block 
+crosswalk <- fread(paste0(path, "/../nhgis_blk2000_co2015/nhgis_blk2000_co2015.csv"))
 
-for (i in seq_along(mi_files)) {
+# need to go from lodes census block -> crosswalk census block -> county -> qcew county 
+crosswalk[,state:=floor(blk2000ge/1e13)]
+crosswalk <- crosswalk[state == 26,]
+
+
+years <- c(2002, 2007, 2013) 
+for (i in 1:length(years)){
+  year <- years[i]
+  files <- list.files(path, pattern = paste0("^lodes_.*", year, ".csv$"), full.names = TRUE)
   
-  dt <- fread(mi_files[i])
+  file_list <- list()
   
-  file_list[[i]] <- dt
+  for (i in seq_along(files)) {
+    
+    dt <- fread(files[i])
+    
+    file_list[[i]] <- dt
+    
+  }
+  
+  
+  full <- rbindlist(file_list, fill = TRUE)
+  
+  
+  fwrite(
+    full,
+    paste0(path, "/clean/lodes_", year, ".csv")
+  ) 
   
 }
 
-mi <- rbindlist(file_list, fill = TRUE)
-# save
-fwrite(
-  mi,
-  paste0(path, "/clean/mi_full_2002_2020.csv")
-)

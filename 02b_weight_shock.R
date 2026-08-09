@@ -21,36 +21,46 @@ setwd(path)
 
 # read in country industry level data ------------------------------------------
 # has location area_fips which is county level 
-full_qcew6_list <- vector("list", length(1995:2014))
+years_qcew <- c(1995, 2000, 2007, 2013)
 
-for (y in 1995:2014){
+full_qcew3_list <- vector("list", length(years_qcew))
+
+for (i in seq_along(years_qcew)) {
   
-  qcew <- fread(paste0(path, "/qcew/clean/full_",y,".csv"))
-  # get only naics6 levels 
-  qcew_naics6 <- qcew[agglvl_code == 78,]
+  y <- years_qcew[i]
   
-  # immediately collapse to area industry year level 
-  qcew_naics6 <- qcew_naics6 |> fgroup_by(area_fips, industry_code, year) |> 
-    fsummarize(total_annual_wages = fsum(total_annual_wages), 
-               annual_avg_emplvl = fsum(annual_avg_emplvl), 
-               annual_avg_estabs_count = fsum(annual_avg_estabs_count)) |> 
-    ungroup() |> data.table()
-  full_qcew6_list[[y - 1994]] <- qcew_naics6
+  qcew <- fread(paste0(path, "/qcew/clean/full_", y, ".csv"))
+  
+  # get NAICS3 level
+  qcew_naics3 <- qcew[agglvl_code == 75]
+  
+  # collapse to county x industry x year
+  qcew_naics3 <- qcew_naics3 |>
+    fgroup_by(area_fips, industry_code, year) |>
+    fsummarize(
+      total_annual_wages = fsum(total_annual_wages),
+      annual_avg_emplvl = fsum(annual_avg_emplvl),
+      annual_avg_estabs_count = fsum(annual_avg_estabs_count)
+    ) |>
+    ungroup() |>
+    data.table()
+  
+  full_qcew3_list[[i]] <- qcew_naics3
 }
 
-qcew_naics6 <- rbindlist(full_qcew6_list)
+qcew_naics3 <- rbindlist(full_qcew3_list)
 
 # trade data -> naics for naics level shock ------------------------------------ 
-shock <- fread(paste0(path, "/output/Delta_M.csv"))
+shock <- fread(paste0(path, "/output/Delta_M_naics3.csv"))
 
 # Create QCEW employment weights -----------------------------------------------
 # 1995 employment -> 1995-2000 shock stored at year 2000
 # 2000 employment -> 2000-2007 shock stored at year 2007
 # 2007 employment -> 2007-2013 shock stored at year 2013
 # ------------------------------------------------------------------------------
-qcew_naics6[, industry_code := as.integer(industry_code)]
+qcew_naics3[, industry_code := as.integer(industry_code)]
 
-qcew_base <- qcew_naics6[year %in% c(1995, 2000, 2007)]
+qcew_base <- qcew_naics3[year %in% c(1995, 2000, 2007)]
 
 qcew_base[, baseline_year := year]
 
@@ -64,7 +74,7 @@ qcew_rep <- merge(
   qcew_base,
   shock,
   by.x = c("year", "industry_code"),
-  by.y = c("refYear", "naics"),
+  by.y = c("refYear", "naics3"),
   all.x = TRUE
 )
 
@@ -90,6 +100,10 @@ qcew_rep[, IPW_US :=
 qcew_rep[, IPW_OTH :=
            (L_ijt / L_ujt) * (Delta_M_OTH / L_it)]
 
+# scale by 1000 for thousand dollars per worker hour 
+qcew_rep[, IPW_US  := IPW_US / 1000]
+qcew_rep[, IPW_OTH := IPW_OTH / 1000]
+
 # Collapse across industries to county x period
 instrument <- qcew_rep |>
   fgroup_by(area_fips, year) |>
@@ -98,12 +112,12 @@ instrument <- qcew_rep |>
     IPW_OTH = fsum(IPW_OTH)
   ) |>
   data.table()
-
+fwrite(instrument, file = paste0(path, "/output/final_ipw_naics3.csv"))
 # Get employment outcome -------------------------------------------------------
 # Use NAICS2 data since manufacturing is identified cleanly there
-qcew_outcome <- rbindlist(full_qcew6_list)
+qcew_outcome <- rbindlist(full_qcew3_list)
 qcew_outcome[, industry_code := as.integer(industry_code)]
-qcew_outcome[,naics2:= floor(as.integer(industry_code/10000))]
+qcew_outcome[,naics2:= floor(as.integer(industry_code/10))]
 
 qcew_outcome <- qcew_outcome[
   year %in% c(1995, 2000, 2007, 2013)
@@ -159,7 +173,6 @@ county_emp[, baseline_emp :=
            by = area_fips
 ]
 
-
 # Regressions ------------------------------------------------------------------
 # Merge onto the two-period instrument
 
@@ -169,6 +182,10 @@ reg <- merge(
   by = c("area_fips", "year")
 )
 
+# save file 
+fwrite(reg, paste0(path, "/output/weighted_qcew.csv"))
+
+# check regs -------------------------------------------------------------------
 reg <- reg[year %in% c(2000, 2007), ]# Period indicator
 reg[, t2 := as.integer(year == 2007)]
 reg[, t2 := as.integer(year == 2007)]

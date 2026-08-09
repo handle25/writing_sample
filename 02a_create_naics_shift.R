@@ -22,13 +22,9 @@ library(dplyr)
 path <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
 setwd(path)
 
-# Create a 1:1 crosswalk hs10 -> hs6 -> naics -----------------------------------------
-weights <- data.table(read_stata(paste0(path, "/peter_schott/imp_detl_yearly_91n/imp_detl_yearly_91n.dta")))
-weights <- rbind(weights, data.table(read_stata(paste0(path, "/peter_schott/imp_detl_yearly_95n/imp_detl_yearly_95n.dta"))), fill = TRUE)
-weights <- rbind(weights, data.table(read_stata(paste0(path, "/peter_schott/imp_detl_yearly_100n/imp_detl_yearly_100n.dta"))), fill = TRUE)
-weights <- rbind(weights, data.table(read_stata(paste0(path, "/peter_schott/imp_detl_yearly_105n/imp_detl_yearly_105n.dta"))), fill = TRUE)
-weights <- rbind(weights, data.table(read_stata(paste0(path, "/peter_schott/imp_detl_yearly_107n/imp_detl_yearly_107n.dta"))), fill = TRUE)
-weights <- rbind(weights, data.table(read_stata(paste0(path, "/peter_schott/imp_detl_yearly_113n/imp_detl_yearly_113n.dta"))), fill = TRUE)
+# Create a 1:1 crosswalk hs10 -> hs6 -> naics ----------------------------------
+# import the weights to take the largest naics value by hs6 code to map hs6 -> naics
+weights <- fread(paste0(path, "/peter_schott/weights.csv"))
 
 weights[, hs6 := floor(commodity / 10000)]
 
@@ -54,7 +50,8 @@ for (i in seq_along(years)) {
   shock <- fread(
     paste0(path, "/comtrade/TradeData_8_7_2026_", y, ".csv"),
     fill = TRUE,
-    quote = "\""
+    quote = "\"",
+    integer64 = "double"
   ) |>
     fselect(
       reporterCode, reporterISO, flowCode, partnerISO, refYear, refPeriodId,
@@ -84,6 +81,7 @@ new <- merge(
 
 new[, naics := as.integer(naics)]
 new[,naics2 := floor(naics/10000)]
+new[,naics3 := floor(naics/1000)]
 #filter to only manufacturing 
 new <- new[naics2 %in% c(31, 32, 33)]
 
@@ -94,23 +92,38 @@ new <- new[!is.na(naics)]
 new[reporterISO != "USA", reporterISO := "OTH"]
 
 # Keep imports from China only
-new <- new[partnerISO == "CHN"]
+new <- new[partnerISO == "CHN", ]
 
 # Collapse to importer x NAICS6 x year
 rep <- new |>
-  fgroup_by(reporterISO, naics, refYear) |>
+  fgroup_by(reporterISO, naics3, refYear) |>
   fsummarize(
     imports = fsum(primaryValue, na.rm = TRUE)
   ) |>
   data.table()
 
 # Long differences in Chinese imports within importer x industry
-setorder(rep, reporterISO, naics, refYear)
+setorder(rep, reporterISO, naics3, refYear)
 
-rep[, Delta_M :=
-      imports - shift(imports),
-    by = .(reporterISO, naics)
-]
+rep_wide <- dcast(
+  rep,
+  reporterISO + naics3 ~ refYear,
+  value.var = "imports"
+)
+
+rep_wide[, Delta_M_2000 := `2000` - `1995`]
+rep_wide[, Delta_M_2007 := `2007` - `2000`]
+rep_wide[, Delta_M_2013 := `2013` - `2007`]
+
+rep <- melt(
+  rep_wide,
+  id.vars = c("reporterISO", "naics3"),
+  measure.vars = c("Delta_M_2000", "Delta_M_2007", "Delta_M_2013"),
+  variable.name = "refYear",
+  value.name = "Delta_M"
+)
+
+rep[, refYear := as.integer(sub("Delta_M_", "", refYear))]
 
 # Keep the endpoint observations
 rep <- rep[refYear %in% c(1995, 2000, 2007, 2013)]
@@ -118,7 +131,7 @@ rep <- rep[refYear %in% c(1995, 2000, 2007, 2013)]
 # Put USA and OTH shocks in separate columns
 rep <- dcast(
   rep,
-  naics + refYear ~ reporterISO,
+  naics3 + refYear ~ reporterISO,
   value.var = "Delta_M"
 )
 
@@ -129,7 +142,7 @@ setnames(
 )
 
 # save the dollar shift in trade 
-fwrite(rep, file = paste0(path, "/output/Delta_M.csv"))
+fwrite(rep, file = paste0(path, "/output/Delta_M_naics3.csv"))
 
 
 

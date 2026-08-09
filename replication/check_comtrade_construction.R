@@ -32,12 +32,8 @@ path <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
 setwd(path)
 
 # Create a 1:1 crosswalk hs10 -> sic -------------------------------------------
-# using U.S. HS10 import values to select the dominant SIC within each HS6
-weights <- data.table(read_stata(paste0(path, "/peter_schott/imp_detl_yearly_113n/imp_detl_yearly_113n.dta")))
-weights <- rbind(weights, data.table(read_stata(paste0(path, "/peter_schott/imp_detl_yearly_105n/imp_detl_yearly_105n.dta"))), fill = TRUE)
-weights <- rbind(weights, data.table(read_stata(paste0(path, "/peter_schott/imp_detl_yearly_95n/imp_detl_yearly_95n.dta"))), fill = TRUE)
-weights <- rbind(weights, data.table(read_stata(paste0(path, "/peter_schott/imp_detl_yearly_91n/imp_detl_yearly_91n.dta"))), fill = TRUE)
-weights <- rbind(weights, data.table(read_stata(paste0(path, "/peter_schott/imp_detl_yearly_107n/imp_detl_yearly_107n.dta"))), fill = TRUE)
+
+weights <- fread(paste0(path, "/peter_schott/weights.csv"))
 
 weights[, hs6 := floor(commodity / 10000)]
 
@@ -81,6 +77,20 @@ shock <- rbindlist(shock_list)
 shock <- shock[flowCode == "M",]
 shock[, chars := nchar(cmdCode)]
 shock <- shock[chars %in% c(5,6), ]
+
+# Aggregate Chinese share of ALL U.S. imports, before SIC mapping/filtering
+check_all <- shock[reporterISO == "USA" & partnerISO %in% c("CHN", "W00"),
+                   .(imports = sum(primaryValue, na.rm = TRUE)),
+                   by = .(refYear, partnerISO)]
+
+check_all <- dcast(
+  check_all,
+  refYear ~ partnerISO,
+  value.var = "imports"
+)
+
+check_all[, china_share_all := CHN / W00]
+
 shock[, cmdCode := as.integer(cmdCode)]
 
 new <- merge(shock, cw_1to1, by.x = c("refYear", "cmdCode"), by.y = c("year", "hs6"), all.x = TRUE)
@@ -141,3 +151,35 @@ ggplot(compare, aes(x = refYear)) +
        linetype = NULL, shape = NULL)
 
 
+compare <- merge(
+  compare,
+  check_all[, .(refYear, china_share_all)],
+  by = "refYear"
+)
+
+ggplot(compare, aes(x = refYear)) +
+  geom_line(aes(y = china_share_old, linetype = "ADH manufacturing")) +
+  geom_point(aes(y = china_share_old, shape = "ADH manufacturing")) +
+  geom_text(aes(y = china_share_old, 
+                label = round(china_share_old, 3)),
+            vjust = -0.7) +
+  
+  geom_line(aes(y = china_share, linetype = "Comtrade manufacturing")) +
+  geom_point(aes(y = china_share, shape = "Comtrade manufacturing")) +
+  geom_text(aes(y = china_share,
+                label = round(china_share, 3)),
+            vjust = -0.7) +
+  
+  geom_line(aes(y = china_share_all, linetype = "Comtrade all imports")) +
+  geom_point(aes(y = china_share_all, shape = "Comtrade all imports")) +
+  geom_text(aes(y = china_share_all,
+                label = round(china_share_all, 3)),
+            vjust = 1.5) +
+  
+  theme_bw() +
+  labs(
+    x = NULL,
+    y = "Chinese Share of U.S. Imports",
+    linetype = NULL,
+    shape = NULL
+  )

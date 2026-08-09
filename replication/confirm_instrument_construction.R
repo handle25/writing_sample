@@ -1,8 +1,8 @@
 ################################################################################
 # Creation date: 8.8.2026 
 # Author: Sophie Handley 
-# Purpose: Confirm that QCEW can replace DD data, confirm instrument construction
-# Using DD data, replicate instrument construction and replace their employment 
+# Purpose: Confirm that QCEW can replace ADH data, confirm instrument construction
+# Using ADH data, replicate instrument construction and replace their employment 
 # data with granular QCEW data and replicate results 
 ################################################################################
 rm(list = ls())
@@ -21,12 +21,16 @@ setwd(path)
 
 # read in data -----------------------------------------------------------------
 # has location area_fips which is county level 
-qcew_list <- vector("list", length(1995:2014))
-denom_list <- vector("list", length(1995:2014))
-full_qcew_list <- vector("list", length(1995:2014))
-full_qcew6_list <- vector("list", length(1995:2014))
+years_qcew <- c(1995, 2000, 2007)
 
-for (y in 1995:2014){
+qcew_list <- vector("list", length(years_qcew))
+denom_list <- vector("list", length(years_qcew))
+full_qcew_list <- vector("list", length(years_qcew))
+full_qcew6_list <- vector("list", length(years_qcew))
+
+for (i in seq_along(years_qcew)) {
+  
+  y <- years_qcew[i]
 
 qcew <- fread(paste0(path, "/qcew/clean/full_",y,".csv"))
 qcew[,hierarchy:= nchar(industry_code)]
@@ -37,7 +41,7 @@ denominator <- qcew[agglvl_code == 70,] |>
   fsummarize(total_emp = fsum(annual_avg_emplvl))
 
 # get only naics6 levels 
-qcew_naics6 <- qcew[agglvl_code == 78,]
+qcew_naics6 <- qcew[agglvl_code == 75,]
 
 qcew <- qcew[agglvl_code == 74,]
 qcew[industry_code == "31-33" , industry_code := 31]
@@ -76,11 +80,13 @@ toplot <- merge(toplot, denominator, by = c("year")) |>
   fmutate(share = sector_emp / total_emp)
 
 assign(paste0("full_", y), toplot)
-qcew_list[[y - 1994]] <- toplot
+qcew_list[[i]] <- toplot
+
 assign(paste0("denom_", y), toplot)
-denom_list[[y - 1994]] <- denominator
-full_qcew_list[[y - 1994]] <- qcew
-full_qcew6_list[[y - 1994]] <- qcew_naics6
+denom_list[[i]] <- denominator
+
+full_qcew_list[[i]] <- qcew
+full_qcew6_list[[i]] <- qcew_naics6
 }
 
 
@@ -135,34 +141,32 @@ ggplot(plot_compare_long, aes(x = year, y = value, linetype = var)) +
 
 
 # Replicate instrument construction using their data ---------------------------
-# replicate their construction using their data 
 # use other country imports 
 # Get Chinese imports for both USA and OTH
 rep <- shock[importer %in% c("USA", "OTH")]
-rep <- rep[year %in% c(1991, 2000, 2007)]
+rep <- rep[year %in% c(1995, 2000, 2007)]
 
 # Merge SIC -> NAICS
 rep <- merge(rep, crosswalk, by.x = "sic87dd", by.y = "sic87")
+# Convert mapped NAICS6 to NAICS3
+rep[, naics3 := floor(as.integer(naics12) / 1000)]
 
-# Collapse to importer x NAICS6 x year Chinese imports
+# Collapse to importer x NAICS3 x year
 rep <- rep[exporter == "CHN"] |>
-  fgroup_by(importer, naics12, year) |>
+  fgroup_by(importer, naics3, year) |>
   fsummarize(imports = fsum(imports)) |>
   data.table()
 
-# Get long differences within importer x industry
-setorder(rep, importer, naics12, year)
+setorder(rep, importer, naics3, year)
 
 rep[, Delta_M := imports - shift(imports),
-    by = .(importer, naics12)]
+    by = .(importer, naics3)]
 
-# Keep only the two long-difference observations
 rep <- rep[year %in% c(2000, 2007)]
 
-# Put USA and OTH changes in separate columns
 rep <- dcast(
   rep,
-  naics12 + year ~ importer,
+  naics3 + year ~ importer,
   value.var = "Delta_M"
 )
 
@@ -190,7 +194,7 @@ qcew_rep <- merge(
   qcew_base,
   rep,
   by.x = c("year", "industry_code"),
-  by.y = c("year", "naics12"),
+  by.y = c("year", "naics3"),
   all.x = TRUE
 )
 
@@ -229,7 +233,7 @@ instrument <- qcew_rep |>
 # Use NAICS2 data since manufacturing is identified cleanly there
 qcew_outcome <- rbindlist(full_qcew6_list)
 qcew_outcome[, industry_code := as.integer(industry_code)]
-qcew_outcome[,naics2:= floor(as.integer(industry_code/10000))]
+qcew_outcome[,naics2:= floor(as.integer(industry_code/10))]
 
 qcew_outcome <- qcew_outcome[
   year %in% c(1995, 2000, 2007)
