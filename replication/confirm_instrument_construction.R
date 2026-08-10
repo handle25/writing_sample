@@ -6,15 +6,7 @@
 # data with granular QCEW data and replicate results 
 ################################################################################
 rm(list = ls())
-library(collapse) 
-library(readxl)
-library(data.table)
-library(fixest)
-library(sf)
-library(haven)
-library(ggplot2)
-library(janitor)
-library(dplyr)
+
 # qcewdata 
 path <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
 setwd(path)

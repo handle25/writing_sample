@@ -1,30 +1,34 @@
+################################################################################
+# Created 8.10.2026
+#
+# Author: Sophie Handley
+#
+# Purpose:
+# Pull LODES OD data, construct county-level commuting outcomes directly from
+# block GEOIDs, and collapse to county x year.
+#
+# No external block-to-county crosswalk is used.
+################################################################################
+
 rm(list = ls())
 
 library(data.table)
+library(collapse)
 library(lehdr)
-library(bit64)
 
 path <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data/lodes"
 
 states <- tolower(state.abb)
 years <- c(2002, 2007, 2013)
 
-# make sure output directory exists
+# output folder ---------------------------------------------------------------
+
 dir.create(
-  paste0(path, "/clean"),
+  paste0(path, "/clean_no_crosswalk"),
   showWarnings = FALSE
 )
 
-# load crosswalk once
-crosswalk <- fread(
-  paste0(
-    path,
-    "/../nhgis_blk2000_co2015/nhgis_blk2000_co2015.csv"
-  )
-)
-
-# make block GEOID type match LODES
-crosswalk[, blk2000ge := as.integer64(blk2000ge)]
+# pull and collapse -----------------------------------------------------------
 
 for (s in states) {
   
@@ -57,6 +61,7 @@ for (s in states) {
     
     # if nothing worked within 5 years, skip
     if (is.null(lodes)) {
+      
       print(
         paste(
           "No usable year found for",
@@ -65,6 +70,7 @@ for (s in states) {
           y
         )
       )
+      
       next
     }
     
@@ -80,80 +86,84 @@ for (s in states) {
     
     lodes <- as.data.table(lodes)
     
-    # convert block GEOIDs to integer64
-    lodes[, h_geocode := as.integer64(h_geocode)]
-    lodes[, w_geocode := as.integer64(w_geocode)]
-    
     # actual LODES year used
     lodes[, year := try_year]
     
-    # home block -> county
-    lodes <- merge(
-      lodes,
-      crosswalk,
-      by.x = "h_geocode",
-      by.y = "blk2000ge"
-    )
+    # county FIPS directly from block GEOID -----------------------------------
     
-    setnames(
-      lodes,
-      "co2015ge",
-      "h_county"
-    )
+    lodes[, county :=
+            as.integer(substr(as.character(h_geocode), 1, 5))]
     
-    # workplace block -> county
-    lodes <- merge(
-      lodes,
-      crosswalk,
-      by.x = "w_geocode",
-      by.y = "blk2000ge"
-    )
+    lodes[, w_county :=
+            as.integer(substr(as.character(w_geocode), 1, 5))]
     
-    setnames(
-      lodes,
-      "co2015ge",
-      "w_county"
-    )
+    # outside-county indicator ------------------------------------------------
     
-    # jobs where home county != workplace county
-    lodes[
-      ,
-      outside := fifelse(
-        h_county != w_county,
-        S000,
-        0
-      )
-    ]
+    lodes[, outside :=
+            fifelse(county == w_county, 0, 1)]
     
-    # collapse to home county x year
-    outside <- lodes[
-      ,
-      .(
-        all_jobs = sum(S000),
-        outside_jobs = sum(outside)
-      ),
-      by = .(h_county, year)
-    ]
+    # outside-county jobs ------------------------------------------------------
     
-    # share of employed residents working outside their county
-    outside[
-      ,
-      outside_d_jobs := outside_jobs / all_jobs
-    ]
+    lodes[, outside_jobs :=
+            S000 * outside]
     
-    # preserve the target period requested
+    lodes[, outside_goods_jobs :=
+            SI01 * outside]
+    
+    lodes[, outside_trade_jobs :=
+            SI02 * outside]
+    
+    lodes[, outside_servc_jobs :=
+            SI03 * outside]
+    
+    # collapse to home county x year ------------------------------------------
+    
+    outside <- lodes |>
+      fgroup_by(county, year) |>
+      fsummarize(
+        total_jobs = fsum(S000),
+        total_goods_jobs = fsum(SI01),
+        total_trade_jobs = fsum(SI02),
+        total_servc_jobs = fsum(SI03),
+        
+        outside_jobs = fsum(outside_jobs),
+        outside_goods_jobs = fsum(outside_goods_jobs),
+        outside_trade_jobs = fsum(outside_trade_jobs),
+        outside_servc_jobs = fsum(outside_servc_jobs)
+      ) |>
+      data.table()
+    
+    # shares working outside county ------------------------------------------
+    
+    outside[, outside_d_jobs :=
+              outside_jobs / total_jobs]
+    
+    outside[, outside_d_goods_jobs :=
+              outside_goods_jobs / total_goods_jobs]
+    
+    outside[, outside_d_trade_jobs :=
+              outside_trade_jobs / total_trade_jobs]
+    
+    outside[, outside_d_servc_jobs :=
+              outside_servc_jobs / total_servc_jobs]
+    
+    # preserve requested period and source state ------------------------------
+    
     outside[, target_year := y]
     
-    # save only collapsed file
+    outside[, state_str := s]
+    
+    # save state x target year file ------------------------------------------
+    
     fwrite(
       outside,
       paste0(
         path,
-        "/clean/lodes_",
+        "/clean_no_crosswalk/lodes_",
         s,
         "_",
         y,
-        "_collapsed.csv"
+        "_collapsed_no_crosswalk.csv"
       )
     )
     
@@ -173,134 +183,51 @@ for (s in states) {
   }
 }
 
+################################################################################
+# Combine all collapsed files
+################################################################################
 
+files <- list.files(
+  paste0(path, "/clean_no_crosswalk"),
+  pattern = "_collapsed_no_crosswalk\\.csv$",
+  full.names = TRUE
+)
 
+lodes_all <- rbindlist(
+  lapply(files, fread),
+  fill = TRUE
+)
 
+# check uniqueness ------------------------------------------------------------
 
+dupes <- lodes_all[
+  ,
+  .N,
+  by = .(county, year)
+][N > 1]
 
+print(dupes)
 
+# save national collapsed dataset --------------------------------------------
 
+fwrite(
+  lodes_all,
+  paste0(
+    path,
+    "/../output/lodes_collapsed_all_no_crosswalk.csv"
+  )
+)
 
+################################################################################
+# Basic checks
+################################################################################
 
+print(table(lodes_all$year))
+print(table(lodes_all$state_str))
 
+print(summary(lodes_all$outside_d_jobs))
+print(summary(lodes_all$outside_d_goods_jobs))
+print(summary(lodes_all$outside_d_trade_jobs))
+print(summary(lodes_all$outside_d_servc_jobs))
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# 
-# for (s in states) {
-#   for (y in years) {
-#     
-#     lodes <- tryCatch(
-#       grab_lodes(
-#         state = s,
-#         year = y,
-#         lodes_type = "od",
-#         download_dir = path
-#       ),
-#       error = function(e) NULL
-#     )
-#     
-#     if (!is.null(lodes)) {
-#       
-#       lodes <- data.table(lodes)
-#       lodes[, `:=`(state = s, year = y)]
-#       
-#       # fwrite(
-#       #   lodes,
-#       #   paste0(path, "/lodes_", s, "_", y, ".csv")
-#       # )
-#       
-#       # has location county and census block 
-#       crosswalk <- fread(paste0(path, "/../nhgis_blk2000_co2015/nhgis_blk2000_co2015.csv"))
-#       
-#       # need to go from lodes census block -> crosswalk census block -> county -> qcew county 
-#       crosswalk[,state:=floor(blk2000ge/1e13)]
-#       
-#       # merge on block group for home and workplace 
-#       lodes <- merge(lodes, crosswalk, by.x = "h_geocode", by.y = "blk2000ge")
-#       setnames(lodes, "co2015ge", "h_county")
-#       lodes <- merge(lodes, crosswalk, by.x = "w_geocode", by.y = "blk2000ge")
-#       setnames(lodes, "co2015ge", "w_county")
-#       
-#       lodes[,outside := ifelse(h_county != w_county, S000, 0)]
-#       
-#       outside <- lodes |> fgroup_by(h_county, year) |>
-#         fsummarise(all_jobs = fsum(S000),
-#                    outside_jobs = fsum(outside)) 
-#       
-#       outside[,outside_d_jobs := outside_jobs / all_jobs]
-#       
-#       
-#       rm(lodes)
-#       gc()
-#       
-#       print(paste("Saved:", s, y))
-#     }
-#   }
-# }
-# 
-# 
-# 
-# # has location county and census block 
-# crosswalk <- fread(paste0(path, "/../nhgis_blk2000_co2015/nhgis_blk2000_co2015.csv"))
-# 
-# # need to go from lodes census block -> crosswalk census block -> county -> qcew county 
-# crosswalk[,state:=floor(blk2000ge/1e13)]
-# 
-# 
-# years <- c(2002, 2007, 2013) 
-# for (i in 1:length(years)){
-#   year <- years[i]
-#   files <- list.files(path, pattern = paste0("^lodes_.*", year, ".csv$"), full.names = TRUE)
-#   
-#   file_list <- list()
-#   
-#   for (i in seq_along(files)) {
-#     
-#     lodes <- fread(files[i])
-#     
-#     # collapse to a sum of all jobs outside of the county 
-#     
-#     # merge on block group for home and workplace 
-#     lodes <- merge(lodes, crosswalk, by.x = "h_geocode", by.y = "blk2000ge")
-#     setnames(lodes, "co2015ge", "h_county")
-#     lodes <- merge(lodes, crosswalk, by.x = "w_geocode", by.y = "blk2000ge")
-#     setnames(lodes, "co2015ge", "w_county")
-#     
-#     lodes[,outside := ifelse(h_county != w_county, S000, 0)]
-#     
-#     outside <- lodes |> fgroup_by(h_county, year) |>
-#       fsummarise(all_jobs = fsum(S000),
-#                  outside_jobs = fsum(outside)) 
-#     
-#     outside[,outside_d_jobs := outside_jobs / all_jobs]
-#     
-#     file_list[[i]] <- outside
-#     
-#   }
-#   
-#   full <- rbindlist(file_list, fill = TRUE)
-# 
-#   fwrite(
-#     full,
-#     paste0(path, "/clean/lodes_", year, "_collapsed.csv")
-#   ) 
-# }
-# 
+################################################################################
