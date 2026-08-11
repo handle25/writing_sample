@@ -1,48 +1,85 @@
 ################################################################################
-# Created 8.8.2026 
-# Author: Sophie Handley 
-# Purpose: Weight dollar shifts in naics x year imports by labor shares with QCEW
-
+# Created 8.8.2026
+#
+# Author: Sophie Handley
+#
+# Purpose: Collapse LODES to county x year, combine states, then merge to QCEW
 ################################################################################
 
 rm(list = ls())
 
-# qcewdata 
 path <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
 setwd(path)
 
+qcew <- fread(paste0(path, "/output/weighted_qcew.csv"))
+qcew[, area_fips_str := sprintf("%06d", area_fips)]
+qcew[, state := floor(area_fips / 1000)]
 
-qcew <- fread(paste0(path, "/output/weighted_qcew.csv")) 
-qcew[,area_fips_str := sprintf("%06d", area_fips)]
-qcew[,state := floor(area_fips/1000)]
-qcew <- qcew[state == 26,]
+states <- c("mi", "oh", "in", "ak", "ar", "al", "va")
 
+lodes_list <- list()
 
-lodes <- fread(paste0(path, "/lodes/full_test/lodes_subset_mi_test.csv"))
-lodes[year %in% c(2002, 2003, 2004), year := 2000]
-lodes[, county := floor(h_geocode/10000000000)]
-lodes[, w_county := floor(w_geocode/10000000000)]
+for (s in states) {
+  
+  lodes <- fread(
+    paste0(
+      path,
+      "/lodes/full_test/lodes_subset_",
+      s,
+      "_test.csv"
+    )
+  )
+  
+  lodes[year %in% c(2002, 2003, 2004), year := 2000]
+  
+  # county identifiers
+  lodes[, county := floor(h_geocode / 10000000000)]
+  lodes[, w_county := floor(w_geocode / 10000000000)]
+  
+  # outside-county indicator
+  lodes[, outside := fifelse(county == w_county, 0, 1)]
+  
+  # outside-county jobs
+  lodes[, outside_jobs := S000 * outside]
+  lodes[, outside_goods_jobs := SI01 * outside]
+  lodes[, outside_trade_jobs := SI02 * outside]
+  lodes[, outside_servc_jobs := SI03 * outside]
+  
+  # collapse state file to county x year
+  lodes <- lodes |>
+    fgroup_by(county, year) |>
+    fsummarize(
+      total_jobs = fsum(S000),
+      total_goods_jobs = fsum(SI01),
+      total_trade_jobs = fsum(SI02),
+      total_servc_jobs = fsum(SI03),
+      outside_jobs = fsum(outside_jobs),
+      outside_goods_jobs = fsum(outside_goods_jobs),
+      outside_trade_jobs = fsum(outside_trade_jobs),
+      outside_servc_jobs = fsum(outside_servc_jobs)
+    ) |>
+    data.table()
+  
+  # save collapsed state piece to list
+  lodes_list[[s]] <- lodes
+  
+  rm(lodes)
+  gc()
+}
 
-lodes[, outside := fifelse(county == w_county, 0, 1)]
-lodes[, outside_jobs := S000 * outside]
-lodes[, outside_goods_jobs := SI01 * outside]
-lodes[, outside_trade_jobs := SI02 * outside]
-lodes[, outside_servc_jobs := SI03 * outside]
+# combine collapsed state datasets
+lodes <- rbindlist(lodes_list, fill = TRUE)
 
+# sanity check: should be unique county x year
+lodes[, .N, by = .(county, year)][N > 1]
 
-lodes <- lodes |>
-  fgroup_by(county, year) |>
-  fsummarize(
-    total_jobs         = fsum(S000),
-    total_goods_jobs   = fsum(SI01),
-    total_trade_jobs   = fsum(SI02),
-    total_servc_jobs   = fsum(SI03),
-    outside_jobs       = fsum(outside_jobs),
-    outside_goods_jobs = fsum(outside_goods_jobs),
-    outside_trade_jobs = fsum(outside_trade_jobs),
-    outside_servc_jobs = fsum(outside_servc_jobs)
-  ) |>
-  data.table()
+# merge once to full QCEW
+reg <- merge(
+  qcew,
+  lodes,
+  by.x = c("area_fips", "year"),
+  by.y = c("county", "year")
+)
 
 # check regs 2007 --------------------------------------------------------------
 reg <- merge(qcew, lodes, 
@@ -145,7 +182,7 @@ mod <- feols(
   d_outside_d_jobs ~ t2 |
     IPW_US ~ IPW_OTH,
   data = reg, 
-  vcov = "hetero"
+  vcov = ~statefip
 )
 
 summary(mod, stage = 2)
@@ -154,10 +191,11 @@ mod <- feols(
     IPW_US ~ IPW_OTH,
   weights = ~baseline_emp,
   data = reg, 
-  vcov = "hetero"
+  vcov = ~statefip
 )
 
 summary(mod, stage = 2)
+
 
 counties <- counties(cb = TRUE, year = 2020)
 counties$area_fips <- as.integer(counties$GEOID)
@@ -206,24 +244,13 @@ mods <- lapply(levels(reg$jobs_q), function(q) {
     d_outside_d_jobs ~ t2 |
       IPW_US ~ IPW_OTH,
     data = reg[jobs_q == q], 
-    vcov = "hetero"
+    vcov = ~statefip
   )
 })
 
 names(mods) <- levels(reg$jobs_q)
 
 lapply(mods, summary, stage = 2)
-
-
-
-
-
-
-
-
-
-
-
 
 
 exit 
@@ -252,14 +279,8 @@ mod <- feols(
 
 # summary(mod, stage = 1)
 summary(mod, stage = 2)
-exit
 
 counties <- counties(cb = TRUE, year = 2020)
-
-ggplot(counties) +
-  geom_sf(fill = "white", color = "grey70", linewidth = 0.1) +
-  theme_void()
-
 
 counties$area_fips <- as.integer(counties$GEOID)
 

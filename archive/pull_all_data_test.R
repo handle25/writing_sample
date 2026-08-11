@@ -2,7 +2,7 @@ rm(list = ls())
 
 path <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data/lodes"
 
-states <- c("mi", "oh", "in")
+states <- c( "va")
 years <- c(2002, 2007, 2013)
 
 
