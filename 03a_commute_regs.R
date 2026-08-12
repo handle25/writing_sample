@@ -26,161 +26,113 @@ qcew[,area_fips_str := sprintf("%06d", area_fips)]
 qcew[,state := floor(area_fips/1000)]
 lodes <- fread(paste0(path, "/output/lodes_collapsed_all_no_crosswalk.csv"))
 lodes[year %in% c(2002, 2003, 2004), year := 2000]
-# check regs 2007 --------------------------------------------------------------
+# check regs 2013 --------------------------------------------------------------
+
 reg <- merge(qcew, lodes, 
              by.x = c("area_fips", "year"), 
              by.y = c("county", "year"))
 setorder(reg, area_fips, year)
 outside_jobs <- names(reg)[grep("^outside", names(reg))]
 
-outside_jobs <- grep("^outside.*_jobs$", names(reg), value = TRUE)
-
-for (v in outside_jobs) {
-  
-  # create share
-  share_var <- paste0(v, "_share_total_jobs")
-  
-  reg[, (share_var) := get(v) / total_jobs]
-  
-  d_var <- paste0("d_", v)
-  
-  reg[, (d_var) := get(v) - shift(get(v), type = "lag", n = 1), by =.(area_fips)]
-  
-  # create change in share
-  d_share_var <- paste0("d_", share_var)
-  
-  reg[, (d_share_var) :=
-        get(share_var) - shift(get(share_var), type = "lag"),
-      by = area_fips]
-}
-
-total_jobs <- grep("^total.*_jobs$", names(reg), value = TRUE)
-
-for (v in total_jobs) {
-  
-  # create share
-  share_var <- paste0(v, "_share_total_jobs")
-  
-  reg[, (share_var) := get(v) / total_jobs]
-  
-  # create change in share
-  d_share_var <- paste0("d_", share_var)
-  
-  reg[, (d_share_var) :=
-        get(share_var) - shift(get(share_var), type = "lag"),
-      by = area_fips]
-  
-  d_var <- paste0("d_", v)
-  
-  reg[, (d_var) :=
-        get(v) - shift(get(v), type = "lag"),
-      by = area_fips]
-}
-
-reg <- reg[year %in% c(2000, 2007), ]# Period indicator
-reg[, t2 := as.integer(year == 2007)]
-
-# State FIPS for clustering
-reg[, statefip := floor(as.integer(area_fips) / 1000)]
-
-mod <- feols(
-  d_sh_empl_mfg ~ t2 | IPW_US ~ IPW_OTH,
-  data = reg,
-  cluster = ~statefip
-)
-mod <- feols(
-  d_sh_empl_mfg ~ as.factor(year) + l_shind_manuf |
-    IPW_US ~ IPW_OTH,
-  data = reg,
-  weights = ~baseline_emp,
-  cluster = ~statefip
-)
-print("MANUFACTURING SHARE")
-summary(mod, stage = 2)
-
-mod <- feols(
-  d_sh_empl_mfg ~ t2 |
-    IPW_US ~ IPW_OTH,
-  data = reg,
-  weights = ~baseline_emp,
-  cluster = ~statefip
-)
-
-summary(mod, stage = 2)
-print("OUTSIDE EMPLOYMENT")
-mod <- feols(
-  d_outside_jobs_share_total_jobs ~ t2  |
-    IPW_US ~ IPW_OTH,
-  data = reg,
-  weights = ~baseline_emp,
-  cluster = ~statefip
-)
-summary(mod, stage = 2)
-print("OUTSIDE EMPLOYMENT")
-mod <- feols(
-  d_outside_jobs_share_total_jobs ~ t2  |
-    IPW_US ~ IPW_OTH,
-  data = reg,
-  weights = ~baseline_emp,
-  cluster = ~statefip
-)
-summary(mod, stage = 1)
-summary(mod, stage = 2)
-
-
-print("OUTSIDE EMPLOYMENT")
-mod <- feols(
-  total_servc_jobs_share_total_jobs
-  ~ t2  |
-    IPW_US ~ IPW_OTH,
-  data = reg,
-  weights = ~baseline_emp,
-  cluster = ~statefip
-)
-summary(mod, stage = 1)
-summary(mod, stage = 2)
-
-print("OUTSIDE EMPLOYMENT")
-mod <- feols(
-  d_total_goods_jobs
-  ~ t2  |
-    IPW_US ~ IPW_OTH,
-  data = reg,
-  weights = ~baseline_emp,
-  cluster = ~statefip
-)
-summary(mod, stage = 1)
-summary(mod, stage = 2)
-
-reg[, inside_servc_jobs :=
-      total_servc_jobs - outside_servc_jobs]
-
+setorder(reg, area_fips, year)
 setorder(reg, area_fips, year)
 
-reg[, d_inside_servc_jobs :=
-      inside_servc_jobs - shift(inside_servc_jobs),
-    by = area_fips]
-mod <- feols(
-  d_outside_servc_jobs
-  ~ t2  |
-    IPW_US ~ IPW_OTH,
-  data = reg,
-  weights = ~baseline_emp,
-  cluster = ~statefip
+# ---------------------------------------------------------------------------
+# Variables to difference in levels
+# ---------------------------------------------------------------------------
+
+level_vars <- c(
+  grep("^outside.*_jobs$", names(reg), value = TRUE),
+  grep("^total.*_jobs$", names(reg), value = TRUE),
+  grep("^inside.*_jobs$", names(reg), value = TRUE)
 )
-summary(mod, stage = 1)
-summary(mod, stage = 2)
 
-exit 
-# check regs 2013 --------------------------------------------------------------
-reg <- merge(qcew, lodes, 
-             by.x = c("area_fips", "year"), 
-             by.y = c("county", "year"))
+level_vars <- unique(level_vars)
 
-setorder(reg, area_fips, year)
-reg[, d_outside_d_jobs :=
-      outside_d_jobs - shift(outside_d_jobs, type = "lag", n = 1),
-    by = .(area_fips)]
+for (i in level_vars) {
+  
+  # denominator = total jobs ---------------------------------------------------
+  
+  var_d_all <- paste0(i, "_share_total_jobs")
+  d_var_d_all <- paste0("d_", i, "_share_total_jobs")
+  
+  reg[, (var_d_all) := get(i) / total_jobs]
+  
+  reg[, (d_var_d_all) :=
+        get(var_d_all) - shift(get(var_d_all), type = "lag", n = 1),
+      by = .(area_fips)]
+  
+  w_var_d_all <- paste0("w_", d_var_d_all)
+  
+  q99 <- quantile(reg[[d_var_d_all]], .99, na.rm = TRUE)
+  q01 <- quantile(reg[[d_var_d_all]], .01, na.rm = TRUE)
+  
+  reg[, (w_var_d_all) := get(d_var_d_all)]
+  reg[get(w_var_d_all) >= q99, (w_var_d_all) := q99]
+  reg[get(w_var_d_all) <= q01, (w_var_d_all) := q01]
+  
+  
+  # denominator = outside jobs -------------------------------------------------
+  
+  var_d_out <- paste0(i, "_share_outside_jobs")
+  d_var_d_out <- paste0("d_", i, "_share_outside_jobs")
+  
+  reg[, (var_d_out) := get(i) / outside_jobs]
+  
+  reg[, (d_var_d_out) :=
+        get(var_d_out) - shift(get(var_d_out), type = "lag", n = 1),
+      by = .(area_fips)]
+  
+  w_var_d_out <- paste0("w_", d_var_d_out)
+  
+  q99 <- quantile(reg[[d_var_d_out]], .99, na.rm = TRUE)
+  q01 <- quantile(reg[[d_var_d_out]], .01, na.rm = TRUE)
+  
+  reg[, (w_var_d_out) := get(d_var_d_out)]
+  reg[get(w_var_d_out) >= q99, (w_var_d_out) := q99]
+  reg[get(w_var_d_out) <= q01, (w_var_d_out) := q01]
+  
+  
+  # denominator = service jobs -------------------------------------------------
+  
+  var_d_svc <- paste0(i, "_share_service_jobs")
+  d_var_d_svc <- paste0("d_", i, "_share_service_jobs")
+  
+  reg[, (var_d_svc) := get(i) / total_servc_jobs]
+  
+  reg[, (d_var_d_svc) :=
+        get(var_d_svc) - shift(get(var_d_svc), type = "lag", n = 1),
+      by = .(area_fips)]
+  
+  w_var_d_svc <- paste0("w_", d_var_d_svc)
+  
+  q99 <- quantile(reg[[d_var_d_svc]], .99, na.rm = TRUE)
+  q01 <- quantile(reg[[d_var_d_svc]], .01, na.rm = TRUE)
+  
+  reg[, (w_var_d_svc) := get(d_var_d_svc)]
+  reg[get(w_var_d_svc) >= q99, (w_var_d_svc) := q99]
+  reg[get(w_var_d_svc) <= q01, (w_var_d_svc) := q01]
+  
+  # denominator = goods jobs ---------------------------------------------------
+  
+  var_d_good <- paste0(i, "_share_goods_jobs")
+  d_var_d_good <- paste0("d_", i, "_share_goods_jobs")
+  
+  reg[, (var_d_good) := get(i) / total_goods_jobs]
+  
+  reg[, (d_var_d_good) :=
+        get(var_d_good) - shift(get(var_d_good), type = "lag", n = 1),
+      by = .(area_fips)]
+  
+  w_var_d_good <- paste0("w_", d_var_d_good)
+  
+  q99 <- quantile(reg[[d_var_d_good]], .99, na.rm = TRUE)
+  q01 <- quantile(reg[[d_var_d_good]], .01, na.rm = TRUE)
+  
+  reg[, (w_var_d_good) := get(d_var_d_good)]
+  reg[get(w_var_d_good) >= q99, (w_var_d_good) := q99]
+  reg[get(w_var_d_good) <= q01, (w_var_d_good) := q01]
+}
 
 reg <- reg[year %in% c(2007, 2013), ]# Period indicator
 reg[, t2 := as.integer(year == 2013)]
@@ -188,139 +140,144 @@ reg[, t2 := as.integer(year == 2013)]
 # State FIPS for clustering
 reg[, statefip := floor(as.integer(area_fips) / 1000)]
 
+# dependent variables ----------------------------------------------------------
 
-mod <- feols(
-  d_sh_empl_mfg ~ as.factor(year) + l_shind_manuf |
-    IPW_US ~ IPW_OTH,
-  data = reg,
-  weights = ~baseline_emp,
-  cluster = ~statefip
+dep_vars <- c(
+  # Services
+  "w_d_total_servc_jobs_share_total_jobs",
+  "w_d_outside_servc_jobs_share_outside_jobs",
+  "w_d_outside_servc_jobs_share_service_jobs",
+  
+  # Goods
+  "w_d_total_goods_jobs_share_total_jobs",
+  "w_d_outside_goods_jobs_share_outside_jobs",
+  "w_d_outside_goods_jobs_share_goods_jobs"
 )
 
-summary(mod, stage = 1)
-summary(mod, stage = 2)
+# variable labels --------------------------------------------------------------
 
-mod <- feols(
-  d_sh_empl_mfg ~ t2 |
-    IPW_US ~ IPW_OTH,
-  data = reg,
-  weights = ~baseline_emp,
-  cluster = ~statefip
-)
-summary(mod, stage = 2)
-
-mod <- feols(
-  d_outside_d_jobs ~ t2 |
-    IPW_US ~ IPW_OTH,
-  data = reg,
-  weights = ~baseline_emp,
-  cluster = ~statefip
-)
-
-summary(mod, stage = 2)
-mod <- feols(
-  d_sh_empl_mfg ~ as.factor(year) + l_shind_manuf |
-    IPW_US ~ IPW_OTH,
-  data = reg,
-  weights = ~baseline_emp,
-  cluster = ~statefip
-)
-
-summary(mod, stage = 2)
-
-mod <- feols(
-  d_sh_empl_mfg ~ t2 |
-    IPW_US ~ IPW_OTH,
-  data = reg,
-  weights = ~baseline_emp,
-  cluster = ~statefip
+names_dict <- c(
+  "fit_IPW_US" = "Import Exposure",
+  "t2" = "Period 2",
+  "l_shind_manuf" = "Initial Manufacturing Share",
+  
+  # Services
+  "w_d_total_servc_jobs_share_total_jobs" =
+    "$\\Delta \\frac{Jobs_{service}}{Jobs_{total}}$",
+  
+  "w_d_outside_servc_jobs_share_outside_jobs" =
+    "$\\Delta \\frac{Jobs_{outside, service}}{Jobs_{outside}}$",
+  
+  "w_d_outside_servc_jobs_share_service_jobs" =
+    "$\\Delta \\frac{Jobs_{outside, service}}{Jobs_{service}}$",
+  
+  # Goods
+  "w_d_total_goods_jobs_share_total_jobs" =
+    "$\\Delta \\frac{Jobs_{goods}}{Jobs_{total}}$",
+  
+  "w_d_outside_goods_jobs_share_outside_jobs" =
+    "$\\Delta \\frac{Jobs_{outside, goods}}{Jobs_{outside}}$",
+  
+  "w_d_outside_goods_jobs_share_goods_jobs" =
+    "$\\Delta \\frac{Jobs_{outside, goods}}{Jobs_{goods}}$"
 )
 
-summary(mod, stage = 2)
 
-mod <- feols(
-  d_outside_d_jobs ~ t2 |
-    IPW_US ~ IPW_OTH,
-  data = reg,
-  weights = ~baseline_emp,
-  cluster = ~statefip
+# baseline models --------------------------------------------------------------
+
+mods <- lapply(dep_vars, function(y) {
+  
+  fml <- as.formula(
+    paste0(
+      y,
+      " ~ t2 + l_shind_manuf | ",
+      "IPW_US ~ IPW_OTH"
+    )
+  )
+  
+  feols(
+    fml,
+    data = reg,
+    weights = ~baseline_emp,
+    cluster = ~statefip
+  )
+})
+
+names(mods) <- dep_vars
+
+
+etable(
+  mods,
+  dict = names_dict,
+  drop = "Constant",
+  headers = list(
+    "^:_:Sector" = list(
+      "Services" = 3,
+      "Goods" = 3
+    )
+  ),
+  tex = TRUE,
+  file = paste0(path, "/../figures/models_sector.tex"),
+  replace = TRUE
 )
 
-# summary(mod, stage = 1)
-summary(mod, stage = 2)
 
-counties <- counties(cb = TRUE, year = 2020)
-counties$area_fips <- as.integer(counties$GEOID)
+# interaction models -----------------------------------------------------------
 
-map_dt <- merge(
-  counties,
-  reg,
-  by = "area_fips", 
-  all.x = TRUE
+mods <- lapply(dep_vars, function(y) {
+  
+  fml <- as.formula(
+    paste0(
+      y,
+      " ~ t2 + l_shind_manuf + l_shind_manuf*t2 | ",
+      "IPW_US ~ IPW_OTH"
+    )
+  )
+  
+  feols(
+    fml,
+    data = reg,
+    weights = ~baseline_emp,
+    cluster = ~statefip
+  )
+})
+
+names(mods) <- dep_vars
+
+
+etable(
+  mods,
+  dict = names_dict,
+  drop = "Constant",
+  headers = list(
+    "^:_:Sector" = list(
+      "Services" = 3,
+      "Goods" = 3
+    )
+  ),
+  tex = TRUE,
+  file = paste0(path, "/../figures/models_sector_interaction.tex"),
+  replace = TRUE
 )
 
-ggplot(map_dt) +
-  geom_sf(aes(fill = outside_d_jobs), color = "grey70", linewidth = 0.1) +
-  coord_sf(
-    xlim = c(-125, -66),
-    ylim = c(24, 50)
-  ) +
-  theme_void()
+# counties <- counties(cb = TRUE, year = 2020)
+# 
+# counties$area_fips <- as.integer(counties$GEOID)
+# 
+# map_dt <- merge(
+#   counties,
+#   reg,
+#   by = "area_fips", 
+#   all.x = TRUE
+# )
 # 
 # ggplot(map_dt) +
-#   geom_sf(aes(fill = d_outside_d_jobs), color = "grey70", linewidth = 0.1) +
+#   geom_sf(aes(fill = outside_d_jobs), color = "grey70", linewidth = 0.1) +
 #   coord_sf(
-#     xlim = c(-80, -90),
-#     ylim = c(34, 50)
+#     xlim = c(-125, -66),
+#     ylim = c(24, 50)
 #   ) +
 #   theme_void()
-
-
-q975 <- quantile(reg$d_outside_d_jobs, .975, na.rm = TRUE)
-q025 <- quantile(reg$d_outside_d_jobs, .025, na.rm = TRUE)
-reg[d_outside_d_jobs >= q975, d_outside_d_jobs := q975]
-reg[d_outside_d_jobs <= q025, d_outside_d_jobs := q025]
-
-q975 <- quantile(reg$IPW_US, .975, na.rm = TRUE)
-q975 <- quantile(reg$IPW_US, .025, na.rm = TRUE)
-reg[IPW_US >= q975, IPW_US := q975]
-reg[IPW_US <= q025, IPW_US := q025]
-
-q975 <- quantile(reg$IPW_OTH, .975, na.rm = TRUE)
-q025 <- quantile(reg$IPW_OTH, .025, na.rm = TRUE)
-reg[IPW_OTH >= q975, IPW_OTH := q975]
-reg[IPW_OTH <= q025, IPW_OTH := q025]
-
-mod <- feols(
-  d_outside_d_jobs ~ t2 |
-    IPW_US ~ IPW_OTH,
-  data = reg,
-  weights = ~baseline_emp,
-  cluster = ~statefip
-)
-
-# summary(mod, stage = 1)
-summary(mod, stage = 2)
-
-
-counties <- counties(cb = TRUE, year = 2020)
-
-counties$area_fips <- as.integer(counties$GEOID)
-
-map_dt <- merge(
-  counties,
-  reg,
-  by = "area_fips", 
-  all.x = TRUE
-)
-
-ggplot(map_dt) +
-  geom_sf(aes(fill = outside_d_jobs), color = "grey70", linewidth = 0.1) +
-  coord_sf(
-    xlim = c(-125, -66),
-    ylim = c(24, 50)
-  ) +
-  theme_void()
 
 # ggplot(map_dt) +
 #   geom_sf(aes(fill = d_outside_d_jobs), color = "grey70", linewidth = 0.1) +
