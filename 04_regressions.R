@@ -1,6 +1,20 @@
-
+################################################################################
+# Regressions 
+################################################################################
 
 reg <- fread(paste0(path, "/output/transformed_reg.csv"))
+
+# TEMPORARY: winsorize shocks at 1st / 99th percentiles -----------------------
+
+for (v in c("IPW_US", "IPW_OTH")) {
+  
+  q01 <- quantile(reg[[v]], 0.01, na.rm = TRUE)
+  q99 <- quantile(reg[[v]], 0.99, na.rm = TRUE)
+  
+  reg[get(v) < q01, (v) := q01]
+  reg[get(v) > q99, (v) := q99]
+}
+
 # dependent variables ----------------------------------------------------------
 
 dep_vars <- c(
@@ -122,6 +136,9 @@ etable(
 )
 
 # Create employment quartiles -------------------------------------------------
+# ---------------------------------------------------------------------------
+# Employment-size quartiles
+# ---------------------------------------------------------------------------
 
 reg[, quantile := cut(
   baseline_emp,
@@ -129,8 +146,29 @@ reg[, quantile := cut(
   include.lowest = TRUE,
   labels = FALSE
 )]
+
+
+# ---------------------------------------------------------------------------
+# Outside service jobs / outside jobs
+# ---------------------------------------------------------------------------
+
 mod_outside <- feols(
-  w_d_outside_servc_jobs_share_outside_jobs ~ t2 + l_shind_manuf |
+  w_d_outside_servc_jobs_share_outside_jobs ~
+    t2 + l_shind_manuf |
+    IPW_US ~ IPW_OTH,
+  data = reg,
+  weights = ~baseline_emp,
+  cluster = ~statefip
+)
+
+mod_outside
+
+
+# By employment-size quartile -------------------------------------------------
+
+mod_outside_quantile <- feols(
+  w_d_outside_servc_jobs_share_outside_jobs ~
+    t2 + l_shind_manuf |
     IPW_US ~ IPW_OTH,
   data = reg,
   weights = ~baseline_emp,
@@ -138,8 +176,102 @@ mod_outside <- feols(
   split = ~quantile
 )
 
-mod_outside
+mod_outside_quantile
 
+
+# ---------------------------------------------------------------------------
+# Outside service jobs / service jobs
+# ---------------------------------------------------------------------------
+
+mod_outside_service <- feols(
+  w_d_outside_servc_jobs_share_service_jobs ~
+    t2 + l_shind_manuf |
+    IPW_US ~ IPW_OTH,
+  data = reg,
+  weights = ~baseline_emp,
+  cluster = ~statefip
+)
+
+mod_outside_service
+
+
+# With net migration control --------------------------------------------------
+
+mod_outside_service_migration <- feols(
+  w_d_outside_servc_jobs_share_service_jobs ~
+    t2 + l_shind_manuf + w_d_net_migration_pctchange |
+    IPW_US ~ IPW_OTH,
+  data = reg,
+  weights = ~baseline_emp,
+  cluster = ~statefip
+)
+
+mod_outside_service_migration
+
+
+# ---------------------------------------------------------------------------
+# Total service jobs / total jobs, by employment-size quartile
+# ---------------------------------------------------------------------------
+
+mod_service_quantile <- feols(
+  w_d_total_servc_jobs_share_total_jobs ~
+    t2 + l_shind_manuf |
+    IPW_US ~ IPW_OTH,
+  data = reg,
+  weights = ~baseline_emp,
+  cluster = ~statefip,
+  split = ~quantile
+)
+
+mod_service_quantile
+
+
+# ---------------------------------------------------------------------------
+# Net migration outcomes
+# ---------------------------------------------------------------------------
+
+mod_migration_change <- feols(
+  w_d_net_migration_pctchange ~
+    t2 + l_shind_manuf |
+    IPW_US ~ IPW_OTH,
+  data = reg,
+  weights = ~baseline_emp,
+  cluster = ~statefip
+)
+
+mod_migration_change
+
+
+mod_migration_share <- feols(
+  w_net_migration_share_emp ~
+    t2 + l_shind_manuf |
+    IPW_US ~ IPW_OTH,
+  data = reg,
+  weights = ~baseline_emp,
+  cluster = ~statefip
+)
+
+mod_migration_share
+
+
+# ---------------------------------------------------------------------------
+# Quantile table
+# ---------------------------------------------------------------------------
+
+etable(
+  mod_service_quantile,
+  dict = names_dict,
+  drop = "Constant",
+  headers = c(
+    "Q1", "Q2", "Q3", "Q4"
+  ),
+  tex = TRUE,
+  file = paste0(
+    path,
+    "/../figures/models_service_quantile.tex"
+  ),
+  replace = TRUE
+)
 # counties <- counties(cb = TRUE, year = 2020)
 # 
 # counties$area_fips <- as.integer(counties$GEOID)
