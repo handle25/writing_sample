@@ -168,19 +168,57 @@ county_emp[, baseline_emp :=
 # Regressions ------------------------------------------------------------------
 # Merge onto the two-period instrument
 
-reg <- merge(
+base <- merge(
   county_emp,
   instrument,
   by = c("area_fips", "year")
 )
 
 # save file 
-fwrite(reg, paste0(path, "/output/weighted_qcew.csv"))
+fwrite(base, paste0(path, "/output/weighted_qcew.csv"))
 
-# check regs -------------------------------------------------------------------
-reg <- reg[year %in% c(2000, 2007), ]# Period indicator
+# check regs 2007 --------------------------------------------------------------
+reg <- base[year %in% c(2000, 2007), ]# Period indicator
 reg[, t2 := as.integer(year == 2007)]
 reg[, t2 := as.integer(year == 2007)]
+
+# State FIPS for clustering
+reg[, statefip := floor(as.integer(area_fips) / 1000)]
+
+mod <- feols(
+  d_sh_empl_mfg ~ t2 | IPW_US ~ IPW_OTH,
+  data = reg,
+  cluster = ~statefip
+)
+mod <- feols(
+  d_sh_empl_mfg ~ as.factor(year) + l_shind_manuf |
+    IPW_US ~ IPW_OTH,
+  data = reg,
+  weights = ~baseline_emp,
+  cluster = ~statefip
+)
+
+summary(mod, stage = 1)
+summary(mod, stage = 2)
+
+mod <- feols(
+  d_sh_empl_mfg ~ t2 |
+    IPW_US ~ IPW_OTH,
+  data = reg,
+  weights = ~baseline_emp,
+  cluster = ~statefip
+)
+
+summary(mod, stage = 1)
+summary(mod, stage = 2)
+
+
+exit 
+
+
+# check regs 2013 --------------------------------------------------------------
+reg <- base[year %in% c(2007, 2013), ]# Period indicator
+reg[, t2 := as.integer(year == 2013)]
 
 # State FIPS for clustering
 reg[, statefip := floor(as.integer(area_fips) / 1000)]

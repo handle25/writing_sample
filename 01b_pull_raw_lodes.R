@@ -18,10 +18,6 @@
 
 rm(list = ls())
 
-library(data.table)
-library(collapse)
-library(lehdr)
-
 path <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data/lodes"
 
 states <- tolower(state.abb)

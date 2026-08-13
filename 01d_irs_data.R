@@ -387,3 +387,32 @@ fwrite(
   irs_2013,
   paste0(path, "/irs_migration_2013.csv")
 )
+
+#####################################################################
+# aggregate data 
+#####################################################################
+
+dt <- fread(paste0(path, "/irs/irs_migration_2002.csv"))
+dt <- rbind(dt, fread(paste0(path, "/irs/irs_migration_2007.csv")))
+dt <- rbind(dt, fread(paste0(path, "/irs/irs_migration_2013.csv")))
+
+irs_wide <- dcast(
+  dt,
+  area_fips + year ~ flow,
+  value.var = c(
+    "returns_1",
+    "returns_2",
+    "returns_3",
+    "exemptions_1",
+    "exemptions_2",
+    "exemptions_3",
+    "agi_1",
+    "agi_2",
+    "agi_3"
+  )
+)
+
+fwrite(
+  irs_wide,
+  paste0(path, "/irs_migration_full.csv")
+)
