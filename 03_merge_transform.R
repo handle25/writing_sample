@@ -11,6 +11,50 @@ rm(list = ls())
 path <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
 setwd(path)
 
+acs <- rbind(fread(paste0(path, "/acs/co-est00int-tot.csv")), 
+             fread(paste0(path,"/acs/co-est2020.csv")), fill = TRUE)
+
+acs <- melt(
+  acs,
+  id.vars = c("STATE", "COUNTY"),
+  measure.vars = patterns("^POPESTIMATE"),
+  variable.name = "year",
+  value.name = "population"
+) |>
+  fmutate(year = as.integer(substr(year, 12, 15)))
+
+
+
+url_1995 <- paste0(
+  "https://www2.census.gov/programs-surveys/popest/",
+  "tables/1990-2000/intercensal/st-co/stch-icen1995.txt"
+)
+
+pop1995 <- fread(url_1995)
+names <- c("year","area_fips","age","sex","eth","population")
+
+names(pop1995) <- names
+pop1995 <- pop1995 |> 
+  fgroup_by(area_fips) |> 
+  fsummarize(population = fsum(population)) |> 
+  fmutate(year = 1995) 
+
+acs <- rbind(acs, pop1995, fill = TRUE)
+
+acs[,area_fips := as.character(as.integer(area_fips))]
+
+
+# Drop rows created from years not covered by that source file
+acs <- acs[!is.na(population)]
+
+# Drop state totals
+acs <- acs[COUNTY != 0]
+
+acs[, area_fips := as.integer(paste0(
+  sprintf("%02d", STATE),
+  sprintf("%03d", COUNTY)
+))]
+
 
 qcew <- fread(paste0(path, "/output/weighted_qcew.csv")) 
 qcew[, .(
@@ -26,16 +70,81 @@ qcew[,area_fips_str := sprintf("%06d", area_fips)]
 qcew[,state := floor(area_fips/1000)]
 lodes <- fread(paste0(path, "/output/lodes_collapsed_all_no_crosswalk.csv"))
 lodes[year %in% c(2002, 2003, 2004), year := 2000]
+
+irs <- fread(paste0(path, "/irs_migration_full.csv"))
 # check regs 2013 --------------------------------------------------------------
 
 reg <- merge(qcew, lodes, 
              by.x = c("area_fips", "year"), 
              by.y = c("county", "year"))
-setorder(reg, area_fips, year)
-outside_jobs <- names(reg)[grep("^outside", names(reg))]
+nrow(reg)
+reg <- merge(reg, irs,
+             by = c("area_fips", "year"),
+             all.x = TRUE)
+nrow(reg)
+reg <- merge(reg, acs,
+             by = c("area_fips", "year"),
+             all.x = TRUE)
 
 setorder(reg, area_fips, year)
-setorder(reg, area_fips, year)
+
+# reg <- reg[year %in% c(2007, 2013), ]# Period indicator
+reg[, t2 := as.integer(year == 2013)]
+
+# State FIPS for clustering
+reg[, statefip := floor(as.integer(area_fips) / 1000)]
+
+
+# ---------------------------------------------------------------------------
+# Net migration flows
+# ---------------------------------------------------------------------------
+
+reg[, net_migration :=
+      as.integer(returns_3_inflow) - as.integer(returns_3_outflow)]
+
+reg[, net_migration_share_emp :=
+      net_migration / total_emp]
+
+reg[, d_net_migration_pctchange :=
+      (net_migration - shift(net_migration, n = 1)) /
+      shift(net_migration, n = 1),
+    by = .(area_fips)]
+
+
+# Winsorize net migration share -----------------------------------------------
+
+q99 <- quantile(reg[, net_migration_share_emp], .99, na.rm = TRUE)
+q01 <- quantile(reg[, net_migration_share_emp], .01, na.rm = TRUE)
+
+reg[, w_net_migration_share_emp := net_migration_share_emp]
+
+reg[
+  net_migration_share_emp >= q99,
+  w_net_migration_share_emp := q99
+]
+
+reg[
+  net_migration_share_emp <= q01,
+  w_net_migration_share_emp := q01
+]
+
+
+# Winsorize change in net migration -------------------------------------------
+
+q99 <- quantile(reg[, d_net_migration_pctchange], .99, na.rm = TRUE)
+q01 <- quantile(reg[, d_net_migration_pctchange], .01, na.rm = TRUE)
+
+reg[, w_d_net_migration_pctchange := d_net_migration_pctchange]
+
+reg[
+  d_net_migration_pctchange >= q99,
+  w_d_net_migration_pctchange := q99
+]
+
+reg[
+  d_net_migration_pctchange <= q01,
+  w_d_net_migration_pctchange := q01
+]
 
 # ---------------------------------------------------------------------------
 # Variables to difference in levels
@@ -132,160 +241,28 @@ for (i in level_vars) {
   reg[, (w_var_d_good) := get(d_var_d_good)]
   reg[get(w_var_d_good) >= q99, (w_var_d_good) := q99]
   reg[get(w_var_d_good) <= q01, (w_var_d_good) := q01]
+  
+  # denominator = population ---------------------------------------------------
+  
+  var_d_pop <- paste0(i, "_share_population")
+  d_var_d_pop <- paste0("d_", i, "_share_population")
+  
+  reg[, (var_d_pop) := get(i) / shift(population, type = "lag", n = 1), by = .(area_fips)]
+  
+  reg[, (d_var_d_pop) :=
+        get(var_d_pop) - shift(get(var_d_pop), type = "lag", n = 1),
+      by = .(area_fips)]
+  
+  w_d_var_d_pop <- paste0("w_", d_var_d_pop)
+  
+  q99 <- quantile(reg[[d_var_d_pop]], .99, na.rm = TRUE)
+  q01 <- quantile(reg[[d_var_d_pop]], .01, na.rm = TRUE)
+  
+  reg[, (w_d_var_d_pop) := get(d_var_d_pop)]
+  reg[get(w_d_var_d_pop) >= q99, (w_d_var_d_pop) := q99]
+  reg[get(w_d_var_d_pop) <= q01, (w_d_var_d_pop) := q01]
 }
 
-reg <- reg[year %in% c(2007, 2013), ]# Period indicator
-reg[, t2 := as.integer(year == 2013)]
-
-# State FIPS for clustering
-reg[, statefip := floor(as.integer(area_fips) / 1000)]
-
-# dependent variables ----------------------------------------------------------
-
-dep_vars <- c(
-  # Services
-  "w_d_total_servc_jobs_share_total_jobs",
-  "w_d_outside_servc_jobs_share_outside_jobs",
-  "w_d_outside_servc_jobs_share_service_jobs",
-  
-  # Goods
-  "w_d_total_goods_jobs_share_total_jobs",
-  "w_d_outside_goods_jobs_share_outside_jobs",
-  "w_d_outside_goods_jobs_share_goods_jobs"
-)
-
-# variable labels --------------------------------------------------------------
-
-names_dict <- c(
-  "fit_IPW_US" = "Import Exposure",
-  "t2" = "Period 2",
-  "l_shind_manuf" = "Initial Manufacturing Share",
-  
-  # Services
-  "w_d_total_servc_jobs_share_total_jobs" =
-    "$\\Delta \\frac{Jobs_{service}}{Jobs_{total}}$",
-  
-  "w_d_outside_servc_jobs_share_outside_jobs" =
-    "$\\Delta \\frac{Jobs_{outside, service}}{Jobs_{outside}}$",
-  
-  "w_d_outside_servc_jobs_share_service_jobs" =
-    "$\\Delta \\frac{Jobs_{outside, service}}{Jobs_{service}}$",
-  
-  # Goods
-  "w_d_total_goods_jobs_share_total_jobs" =
-    "$\\Delta \\frac{Jobs_{goods}}{Jobs_{total}}$",
-  
-  "w_d_outside_goods_jobs_share_outside_jobs" =
-    "$\\Delta \\frac{Jobs_{outside, goods}}{Jobs_{outside}}$",
-  
-  "w_d_outside_goods_jobs_share_goods_jobs" =
-    "$\\Delta \\frac{Jobs_{outside, goods}}{Jobs_{goods}}$"
-)
-
-
-# baseline models --------------------------------------------------------------
-
-mods <- lapply(dep_vars, function(y) {
-  
-  fml <- as.formula(
-    paste0(
-      y,
-      " ~ t2 + l_shind_manuf | ",
-      "IPW_US ~ IPW_OTH"
-    )
-  )
-  
-  feols(
-    fml,
-    data = reg,
-    weights = ~baseline_emp,
-    cluster = ~statefip
-  )
-})
-
-names(mods) <- dep_vars
-
-
-etable(
-  mods,
-  dict = names_dict,
-  drop = "Constant",
-  headers = list(
-    "^:_:Sector" = list(
-      "Services" = 3,
-      "Goods" = 3
-    )
-  ),
-  tex = TRUE,
-  file = paste0(path, "/../figures/models_sector.tex"),
-  replace = TRUE
-)
-
-
-# interaction models -----------------------------------------------------------
-
-mods <- lapply(dep_vars, function(y) {
-  
-  fml <- as.formula(
-    paste0(
-      y,
-      " ~ t2 + l_shind_manuf + l_shind_manuf*t2 | ",
-      "IPW_US ~ IPW_OTH"
-    )
-  )
-  
-  feols(
-    fml,
-    data = reg,
-    weights = ~baseline_emp,
-    cluster = ~statefip
-  )
-})
-
-names(mods) <- dep_vars
-
-
-etable(
-  mods,
-  dict = names_dict,
-  drop = "Constant",
-  headers = list(
-    "^:_:Sector" = list(
-      "Services" = 3,
-      "Goods" = 3
-    )
-  ),
-  tex = TRUE,
-  file = paste0(path, "/../figures/models_sector_interaction.tex"),
-  replace = TRUE
-)
-
-# counties <- counties(cb = TRUE, year = 2020)
-# 
-# counties$area_fips <- as.integer(counties$GEOID)
-# 
-# map_dt <- merge(
-#   counties,
-#   reg,
-#   by = "area_fips", 
-#   all.x = TRUE
-# )
-# 
-# ggplot(map_dt) +
-#   geom_sf(aes(fill = outside_d_jobs), color = "grey70", linewidth = 0.1) +
-#   coord_sf(
-#     xlim = c(-125, -66),
-#     ylim = c(24, 50)
-#   ) +
-#   theme_void()
-
-# ggplot(map_dt) +
-#   geom_sf(aes(fill = d_outside_d_jobs), color = "grey70", linewidth = 0.1) +
-#   coord_sf(
-#     xlim = c(-80, -90),
-#     ylim = c(34, 50)
-#   ) +
-#   theme_void()
-
+fwrite(reg, paste0(path, "/output/transformed_reg.csv"))
 
 

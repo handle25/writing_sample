@@ -45,6 +45,49 @@ qcew_naics3 <- rbindlist(full_qcew3_list)
 # trade data -> naics for naics level shock ------------------------------------ 
 shock <- fread(paste0(path, "/output/Delta_M_naics3.csv"))
 
+# population weights -----------------------------------------------------------
+acs <- rbind(fread(paste0(path, "/acs/co-est00int-tot.csv")), 
+             fread(paste0(path,"/acs/co-est2020.csv")), fill = TRUE)
+
+acs <- melt(
+  acs,
+  id.vars = c("STATE", "COUNTY"),
+  measure.vars = patterns("^POPESTIMATE"),
+  variable.name = "year",
+  value.name = "population"
+) |>
+  fmutate(year = as.integer(substr(year, 12, 15)))
+
+# Drop rows created from years not covered by that source file
+acs <- acs[!is.na(population)]
+
+# Drop state totals
+acs <- acs[COUNTY != 0]
+
+acs[, area_fips := as.character(paste0(
+  sprintf("%02d", STATE),
+  sprintf("%03d", COUNTY)
+))]
+
+
+
+url_1995 <- paste0(
+  "https://www2.census.gov/programs-surveys/popest/",
+  "tables/1990-2000/intercensal/st-co/stch-icen1995.txt"
+)
+
+pop1995 <- fread(url_1995)
+names <- c("year","area_fips","age","sex","eth","population")
+
+names(pop1995) <- names
+pop1995 <- pop1995 |> 
+  fgroup_by(area_fips) |> 
+  fsummarize(population = fsum(population)) |> 
+  fmutate(year = 1995) 
+
+acs <- rbind(acs, pop1995, fill = TRUE)
+
+acs[,area_fips := as.character(as.integer(area_fips))]
 # Create QCEW employment weights -----------------------------------------------
 # 1995 employment -> 1995-2000 shock stored at year 2000
 # 2000 employment -> 2000-2007 shock stored at year 2007
@@ -53,6 +96,14 @@ shock <- fread(paste0(path, "/output/Delta_M_naics3.csv"))
 qcew_naics3[, industry_code := as.integer(industry_code)]
 
 qcew_base <- qcew_naics3[year %in% c(1995, 2000, 2007)]
+nrow(qcew_base)
+qcew_base <- merge(
+  qcew_base, acs, 
+  by = c("year", "area_fips")#, 
+  # all.x = TRUE
+)
+nrow(qcew_base)
+
 
 qcew_base[, baseline_year := year]
 
@@ -87,10 +138,10 @@ qcew_rep[is.na(Delta_M_OTH), Delta_M_OTH := 0]
 
 # Same employment weights applied to both trade changes
 qcew_rep[, IPW_US :=
-           (L_ijt / L_ujt) * (Delta_M_US / L_it)]
+           (L_ijt / L_ujt) * (Delta_M_US / population)]
 
 qcew_rep[, IPW_OTH :=
-           (L_ijt / L_ujt) * (Delta_M_OTH / L_it)]
+           (L_ijt / L_ujt) * (Delta_M_OTH / population)]
 
 # scale by 1000 for thousand dollars per worker hour 
 qcew_rep[, IPW_US  := IPW_US / 1000]

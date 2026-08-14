@@ -3,6 +3,8 @@
 ################################################################################
 
 reg <- fread(paste0(path, "/output/transformed_reg.csv"))
+reg <- reg[year %in% c(2007, 2013),]
+reg[, t2 := as.integer(year == 2013)]
 
 # TEMPORARY: winsorize shocks at 1st / 99th percentiles -----------------------
 
@@ -92,7 +94,7 @@ etable(
     )
   ),
   tex = TRUE,
-  file = paste0(path, "/../figures/models_sector.tex"),
+  file = paste0(path, "/../figures/models_sector_0813.tex"),
   replace = TRUE
 )
 
@@ -131,7 +133,7 @@ etable(
     )
   ),
   tex = TRUE,
-  file = paste0(path, "/../figures/models_sector_interaction.tex"),
+  file = paste0(path, "/../figures/models_sector_interaction_0813.tex"),
   replace = TRUE
 )
 
@@ -142,11 +144,14 @@ etable(
 
 reg[, quantile := cut(
   baseline_emp,
-  breaks = quantile(baseline_emp, probs = 0:4/4, na.rm = TRUE),
+  breaks = quantile(
+    baseline_emp,
+    probs = 0:3/3,
+    na.rm = TRUE
+  ),
   include.lowest = TRUE,
   labels = FALSE
-)]
-
+), by = year]
 
 # ---------------------------------------------------------------------------
 # Outside service jobs / outside jobs
@@ -162,6 +167,18 @@ mod_outside <- feols(
 )
 
 mod_outside
+
+
+mod_population <- feols(
+  w_d_outside_servc_jobs_share_population ~
+    t2 + l_shind_manuf |
+    IPW_US ~ IPW_OTH,
+  data = reg,
+  weights = ~baseline_emp,
+  cluster = ~statefip
+)
+
+mod_population
 
 
 # By employment-size quartile -------------------------------------------------
@@ -225,6 +242,19 @@ mod_service_quantile <- feols(
 
 mod_service_quantile
 
+mod_good_quantile <- feols(
+  d_total_goods_jobs_share_total_jobs ~
+    t2 + l_shind_manuf |
+    IPW_US ~ IPW_OTH,
+  data = reg,
+  weights = ~baseline_emp,
+  cluster = ~statefip,
+  split = ~quantile
+)
+
+mod_good_quantile
+
+
 
 # ---------------------------------------------------------------------------
 # Net migration outcomes
@@ -248,7 +278,8 @@ mod_migration_share <- feols(
     IPW_US ~ IPW_OTH,
   data = reg,
   weights = ~baseline_emp,
-  cluster = ~statefip
+  cluster = ~statefip,
+  split = ~quantile
 )
 
 mod_migration_share
@@ -268,7 +299,22 @@ etable(
   tex = TRUE,
   file = paste0(
     path,
-    "/../figures/models_service_quantile.tex"
+    "/../figures/models_service_quantile_0813.tex"
+  ),
+  replace = TRUE
+)
+
+etable(
+  mod_good_quantile,
+  dict = names_dict,
+  drop = "Constant",
+  headers = c(
+    "Q1", "Q2", "Q3", "Q4"
+  ),
+  tex = TRUE,
+  file = paste0(
+    path,
+    "/../figures/models_good_quantile_0813.tex"
   ),
   replace = TRUE
 )
