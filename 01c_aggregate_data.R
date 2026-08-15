@@ -6,6 +6,48 @@ weights <- rbind(weights, data.table(read_stata(paste0(path, "/peter_schott/imp_
 weights <- rbind(weights, data.table(read_stata(paste0(path, "/peter_schott/imp_detl_yearly_107n/imp_detl_yearly_107n.dta"))), fill = TRUE)
 weights <- rbind(weights, data.table(read_stata(paste0(path, "/peter_schott/imp_detl_yearly_113n/imp_detl_yearly_113n.dta"))), fill = TRUE)
 fwrite(weights, paste0(path, "/peter_schott/weights.csv"))
+
+
+# using U.S. HS10 import values to select the dominant SIC within each HS6
+weights <- data.table(read_stata(paste0(path, "/peter_schott/imp_detl_yearly_91n/imp_detl_yearly_91n.dta")))
+for (y in c(96:99)){
+  weights <- rbind(weights, data.table(
+    read_stata(paste0(path,
+                      "/peter_schott/imp_detl_yearly_",
+                      y,"n/imp_detl_yearly_", 
+                      y, "n.dta"))), fill = TRUE)  
+}
+for (y in c(0:9)){
+  weights <- rbind(weights, data.table(
+    read_stata(paste0(path,
+                      "/peter_schott/imp_detl_yearly_10",
+                      y,"n/imp_detl_yearly_10", 
+                      y, "n.dta"))), fill = TRUE)  
+}
+for (y in c(10:17)){
+  weights <- rbind(weights, data.table(
+    read_stata(paste0(path,
+                      "/peter_schott/imp_detl_yearly_1",
+                      y,"n/imp_detl_yearly_1", 
+                      y, "n.dta"))), fill = TRUE)  
+}
+
+
+weights[, hs6 := floor(commodity / 10000)]
+
+cw <- weights |>
+  fgroup_by(year, hs6, naics) |>
+  fsummarize(
+    import_value = fsum(gen_val_yr, na.rm = TRUE)
+  ) |>
+  data.table()
+
+setorder(cw, year, hs6, -import_value)
+
+cw_1to1 <- cw[, .SD[1], by = .(year, hs6)]
+
+fwrite(cw_1to1, paste0(path, "/peter_schott/weights_extended_collapsed.csv"))
+fwrite(weights, paste0(path, "/peter_schott/weights_full.csv"))
   
 # lodes data collapsed in 01b --------------------------------------------------
 

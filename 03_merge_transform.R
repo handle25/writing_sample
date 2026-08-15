@@ -213,8 +213,17 @@ reg[, net_migration :=
       as.integer(returns_3_outflow)]
 
 # Net migration relative to employed residents
-reg[, net_migration_share_emp :=
+reg[, net_migration_share_resident_emp :=
       net_migration / resident_emp]
+
+reg[, net_migration_share_workplace_emp :=
+      net_migration / workplace_emp]
+
+reg[, net_migration_share_population :=
+      net_migration / population]
+
+reg[, net_migration_share_population_t0 :=
+      net_migration / shift(population, type = "lag", n = 1), by = .(area_fips)]
 
 reg[, d_net_migration_pctchange :=
       (net_migration -
@@ -224,31 +233,41 @@ reg[, d_net_migration_pctchange :=
 
 
 # Winsorize net migration share -----------------------------------------------
+for (v in c("net_migration_share_workplace_emp", 
+            "net_migration_share_resident_emp", 
+            "net_migration_share_population",
+            "net_migration_share_population_t0")){
+  w_var <- paste0("w_", v)
+  
+  q99 <- quantile(
+    reg[, get(v)],
+    .99,
+    na.rm = TRUE
+  )
+  
+  q01 <- quantile(
+    reg[, get(v)],
+    .01,
+    na.rm = TRUE
+  )
+  
+  reg[, (w_var) :=
+        get(v)]
+  
+  reg[
+    get(v) >= q99,
+    (w_var) := q99
+  ]
+  
+  reg[
+    get(v) <= q01,
+    (w_var) := q01
+  ]
+  
+  
+  
+}
 
-q99 <- quantile(
-  reg[, net_migration_share_emp],
-  .99,
-  na.rm = TRUE
-)
-
-q01 <- quantile(
-  reg[, net_migration_share_emp],
-  .01,
-  na.rm = TRUE
-)
-
-reg[, w_net_migration_share_emp :=
-      net_migration_share_emp]
-
-reg[
-  net_migration_share_emp >= q99,
-  w_net_migration_share_emp := q99
-]
-
-reg[
-  net_migration_share_emp <= q01,
-  w_net_migration_share_emp := q01
-]
 
 
 # Winsorize change in net migration -------------------------------------------
@@ -399,6 +418,63 @@ for (i in level_vars) {
   
   reg[, (var_d_all) :=
         get(i) / resident_emp]
+  
+  reg[, (d_var_d_all) :=
+        get(var_d_all) -
+        shift(
+          get(var_d_all),
+          type = "lag",
+          n = 1
+        ),
+      by = area_fips]
+  
+  w_var_d_all <- paste0(
+    "w_",
+    d_var_d_all
+  )
+  
+  q99 <- quantile(
+    reg[[d_var_d_all]],
+    .99,
+    na.rm = TRUE
+  )
+  
+  q01 <- quantile(
+    reg[[d_var_d_all]],
+    .01,
+    na.rm = TRUE
+  )
+  
+  reg[, (w_var_d_all) :=
+        get(d_var_d_all)]
+  
+  reg[
+    get(w_var_d_all) >= q99,
+    (w_var_d_all) := q99
+  ]
+  
+  reg[
+    get(w_var_d_all) <= q01,
+    (w_var_d_all) := q01
+  ]
+  
+  ##############################################################################
+  # Denominator = local workplace employment
+  ##############################################################################
+  
+  var_d_all <- paste0(
+    i,
+    "_share_workplace_emp"
+  )
+  
+  d_var_d_all <- paste0(
+    "d_",
+    i,
+    "_share_workplace_emp"
+  )
+  
+  reg[, (var_d_all) :=
+        get(i) / workplace_emp]
   
   reg[, (d_var_d_all) :=
         get(var_d_all) -
@@ -674,7 +750,10 @@ for (i in level_vars) {
   ]
 }
 
-
+reg[, workplace_emp_share_resident_emp := workplace_emp / resident_emp]
+reg[, d_workplace_emp_share_resident_emp := 
+      workplace_emp_share_resident_emp - shift(workplace_emp_share_resident_emp, type = "lag", n = 1), 
+    by = .(area_fips)]
 ################################################################################
 # Save
 ################################################################################
