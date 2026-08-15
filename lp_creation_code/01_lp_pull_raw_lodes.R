@@ -14,7 +14,7 @@
 # - industry groups
 # - age groups
 # - earnings groups
-#
+# 
 # No external block-to-county crosswalk is used.
 ################################################################################
 

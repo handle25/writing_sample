@@ -1,10 +1,9 @@
 
 # qcewdata 
-path <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data/qcew"
+path <- "D:/writing_sample/data/qcew"
 setwd(path)
 
-years <- seq(1995,2014)
-
+years <- seq(1995,2025)
 
 for (y in years) {
   
@@ -33,7 +32,7 @@ for (y in years) {
   # save
   fwrite(
     dt,
-    paste0(path, "/clean/full_", y, ".csv")
+    paste0(path, "/clean/new_full_", y, ".csv")
   )
   
   # clear memory before next year
@@ -43,13 +42,29 @@ for (y in years) {
   setwd(path)
 }
 
+
 qcew_list <- list()
 
 for (y in years) {
   
-  raw <- fread(paste0(path, "/clean/full_", y, ".csv"))
+  raw <- fread(paste0(path, "/clean/new_full_", y, ".csv"))
+  qcew_naics3 <- raw[agglvl_code == 75]
+  if ("annual_avg_estabs" %in% names(qcew_naics3)) {
+    setnames(qcew_naics3, "annual_avg_estabs", "annual_avg_estabs_count")
+  }
   
-  qcew_list[[length(qcew_list) + 1]] <- raw
+  # collapse to county x industry x year
+  qcew_naics3 <- qcew_naics3 |>
+    fgroup_by(area_fips, industry_code, year) |>
+    fsummarize(
+      total_annual_wages = fsum(total_annual_wages),
+      annual_avg_emplvl = fsum(annual_avg_emplvl),
+      annual_avg_estabs_count = fsum(annual_avg_estabs_count)
+    ) |>
+    ungroup() |>
+    data.table()
+  
+  qcew_list[[length(qcew_list) + 1]] <- qcew_naics3
 }
 
 dt <- rbindlist(qcew_list, fill = TRUE)
@@ -57,7 +72,7 @@ dt <- rbindlist(qcew_list, fill = TRUE)
 # save
 fwrite(
   dt,
-  paste0(path, "/clean/full_qcew_1990_2023.csv")
+  paste0(path, "/clean/new_full_qcew_1995_2025.csv")
 )
 
 # clear memory before next year
