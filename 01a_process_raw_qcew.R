@@ -60,13 +60,6 @@ fwrite(
   paste0(path, "/clean/full_qcew_1990_2023.csv")
 )
 
-dt[, state := as.integer(substr(area_fips, 1, 2))]
-mi <- dt[state == 26,]
-
-
-fwrite(mi, paste0(path, "/qcew/clean/michigan.csv"))
-
-
 # clear memory before next year
 rm(dt, qcew_list)
 gc()
