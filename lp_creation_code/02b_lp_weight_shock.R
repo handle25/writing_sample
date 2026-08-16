@@ -136,8 +136,9 @@ fwrite(instrument, file = paste0(path, "/output/lp_final_ipw_naics3.csv"))
 
 # Get employment outcome -------------------------------------------------------
 # Use NAICS2 data since manufacturing is identified cleanly there
-qcew_outcome <- rbindlist(qcew_naics3)
+qcew_outcome <- fread(paste0(path, "/qcew/clean/new_full_qcew_1995_2025.csv"))
 qcew_outcome[, industry_code := as.integer(industry_code)]
+qcew_outcome[, area_fips := as.character(area_fips)]
 qcew_outcome[,naics2:= floor(as.integer(industry_code/10))]
 
 
@@ -171,8 +172,7 @@ county_emp[is.na(manufac_emp), manufac_emp := 0]
 
 county_emp[, sh_empl_mfg := manufac_emp / total_emp]
 
-
-# Long differences: 1995-2000 and 2000-2007
+# differences 
 setorder(county_emp, area_fips, year)
 
 county_emp[, d_sh_empl_mfg :=

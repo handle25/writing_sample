@@ -94,21 +94,15 @@ qcew[, state := floor(area_fips / 1000)]
 lodes <- fread(
   paste0(
     path,
-    "/output/lodes_collapsed_all_no_crosswalk.csv"
+    "/output/lp_lodes_collapsed_all_no_crosswalk.csv"
   )
 )
-
-lodes[
-  year %in% c(2002, 2003, 2004),
-  year := 2000
-]
-
-
+exit
 # IRS --------------------------------------------------------------------------
 
-irs <- fread(
-  paste0(path, "/irs_migration_full.csv")
-)
+# irs <- fread(
+#   paste0(path, "/irs_migration_full.csv")
+# )
 
 
 ################################################################################
@@ -206,71 +200,71 @@ reg[, d_net_migration_pctchange :=
       shift(net_migration, n = 1),
     by = area_fips]
 
+# 
+# # Winsorize net migration share -----------------------------------------------
+# for (v in c("net_migration_share_workplace_emp", 
+#             "net_migration_share_resident_emp", 
+#             "net_migration_share_population",
+#             "net_migration_share_population_t0")){
+#   w_var <- paste0("w_", v)
+#   
+#   q99 <- quantile(
+#     reg[, get(v)],
+#     .99,
+#     na.rm = TRUE
+#   )
+#   
+#   q01 <- quantile(
+#     reg[, get(v)],
+#     .01,
+#     na.rm = TRUE
+#   )
+#   
+#   reg[, (w_var) :=
+#         get(v)]
+#   
+#   reg[
+#     get(v) >= q99,
+#     (w_var) := q99
+#   ]
+#   
+#   reg[
+#     get(v) <= q01,
+#     (w_var) := q01
+#   ]
+#   
+#   
+#   
+# }
 
-# Winsorize net migration share -----------------------------------------------
-for (v in c("net_migration_share_workplace_emp", 
-            "net_migration_share_resident_emp", 
-            "net_migration_share_population",
-            "net_migration_share_population_t0")){
-  w_var <- paste0("w_", v)
-  
-  q99 <- quantile(
-    reg[, get(v)],
-    .99,
-    na.rm = TRUE
-  )
-  
-  q01 <- quantile(
-    reg[, get(v)],
-    .01,
-    na.rm = TRUE
-  )
-  
-  reg[, (w_var) :=
-        get(v)]
-  
-  reg[
-    get(v) >= q99,
-    (w_var) := q99
-  ]
-  
-  reg[
-    get(v) <= q01,
-    (w_var) := q01
-  ]
-  
-  
-  
-}
-
-
-
-# Winsorize change in net migration -------------------------------------------
-
-q99 <- quantile(
-  reg[, d_net_migration_pctchange],
-  .99,
-  na.rm = TRUE
-)
-
-q01 <- quantile(
-  reg[, d_net_migration_pctchange],
-  .01,
-  na.rm = TRUE
-)
-
-reg[, w_d_net_migration_pctchange :=
-      d_net_migration_pctchange]
-
-reg[
-  d_net_migration_pctchange >= q99,
-  w_d_net_migration_pctchange := q99
-]
-
-reg[
-  d_net_migration_pctchange <= q01,
-  w_d_net_migration_pctchange := q01
-]
+# 
+# 
+# # Winsorize change in net migration -------------------------------------------
+# 
+# q99 <- quantile(
+#   reg[, d_net_migration_pctchange],
+#   .99,
+#   na.rm = TRUE
+# )
+# 
+# q01 <- quantile(
+#   reg[, d_net_migration_pctchange],
+#   .01,
+#   na.rm = TRUE
+# )
+# 
+# reg[, w_d_net_migration_pctchange :=
+#       d_net_migration_pctchange]
+# 
+# reg[
+#   d_net_migration_pctchange >= q99,
+#   w_d_net_migration_pctchange := q99
+# ]
+# 
+# reg[
+#   d_net_migration_pctchange <= q01,
+#   w_d_net_migration_pctchange := q01
+# ]
 
 
 ################################################################################
@@ -737,6 +731,6 @@ fwrite(
   reg,
   paste0(
     path,
-    "/output/transformed_reg.csv"
+    "/output/lp_transformed_reg.csv"
   )
 )
