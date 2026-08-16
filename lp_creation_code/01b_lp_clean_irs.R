@@ -361,9 +361,9 @@ for (y in 4:10) {
       file <- list.files(
         year_path,
         pattern = paste0(
-          f,
           state,
-          "\\.csv$"
+          f,
+          "\\.xls$"
         ),
         full.names = TRUE,
         ignore.case = TRUE
@@ -392,7 +392,12 @@ for (y in 4:10) {
       # Read
       ##########################################################################
       
-      dt <- fread(file)
+      dt <- read_excel(
+        file,
+        skip = 7,
+        col_names = FALSE
+      ) |>
+        data.table()
       
       
       ##########################################################################
