@@ -43,12 +43,15 @@ for (h in 0:10) {
 # w_outside_earn3333_jobs_share_resident_emp 
 # w_outside_jobs_share_resident_emp outside_servc_jobs_share_resident_emp w_outside_servc_jobs_share_service_jobs w_outside_jobs_share_population
 base <- "w_outside_servc_jobs_share_resident_emp"
+base <- "returns_3_outflow"
 
 reg[, l1_y := shift(get(base), 1),
     by = area_fips]
 
 reg[, l2_y := shift(get(base), 2),
     by = area_fips]
+
+reg[, returns_3_outflow := as.integer(returns_3_outflow)]
 
 reg[, l1_shock := shift(IPW_US, 1), by = area_fips]
 reg[, l2_shock := shift(IPW_US, 2), by = area_fips]
