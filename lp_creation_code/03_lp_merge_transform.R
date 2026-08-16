@@ -368,357 +368,67 @@ level_vars <- c(
 )
 
 level_vars <- unique(level_vars)
+################################################################################
+# Construct level shares for LP outcomes
+################################################################################
 
+level_vars <- c(
+  grep("^outside.*_jobs$", names(reg), value = TRUE),
+  grep("^total.*_jobs$", names(reg), value = TRUE),
+  grep("^inside.*_jobs$", names(reg), value = TRUE)
+)
+
+level_vars <- unique(level_vars)
 
 for (i in level_vars) {
   
-  ##############################################################################
-  # Denominator = resident employment
-  ##############################################################################
-  
-  var_d_all <- paste0(
-    i,
-    "_share_resident_emp"
-  )
-  
-  d_var_d_all <- paste0(
-    "d_",
-    i,
-    "_share_resident_emp"
-  )
-  
-  reg[, (var_d_all) :=
+  # Resident employment
+  reg[, (paste0(i, "_share_resident_emp")) :=
         get(i) / resident_emp]
   
-  reg[, (d_var_d_all) :=
-        get(var_d_all) -
-        shift(
-          get(var_d_all),
-          type = "lag",
-          n = 1
-        ),
-      by = area_fips]
-  
-  w_var_d_all <- paste0(
-    "w_",
-    d_var_d_all
-  )
-  
-  q99 <- quantile(
-    reg[[d_var_d_all]],
-    .99,
-    na.rm = TRUE
-  )
-  
-  q01 <- quantile(
-    reg[[d_var_d_all]],
-    .01,
-    na.rm = TRUE
-  )
-  
-  reg[, (w_var_d_all) :=
-        get(d_var_d_all)]
-  
-  reg[
-    get(w_var_d_all) >= q99,
-    (w_var_d_all) := q99
-  ]
-  
-  reg[
-    get(w_var_d_all) <= q01,
-    (w_var_d_all) := q01
-  ]
-  
-  ##############################################################################
-  # Denominator = local workplace employment
-  ##############################################################################
-  
-  var_d_all <- paste0(
-    i,
-    "_share_workplace_emp"
-  )
-  
-  d_var_d_all <- paste0(
-    "d_",
-    i,
-    "_share_workplace_emp"
-  )
-  
-  reg[, (var_d_all) :=
+  # Workplace employment
+  reg[, (paste0(i, "_share_workplace_emp")) :=
         get(i) / workplace_emp]
   
-  reg[, (d_var_d_all) :=
-        get(var_d_all) -
-        shift(
-          get(var_d_all),
-          type = "lag",
-          n = 1
-        ),
-      by = area_fips]
-  
-  w_var_d_all <- paste0(
-    "w_",
-    d_var_d_all
-  )
-  
-  q99 <- quantile(
-    reg[[d_var_d_all]],
-    .99,
-    na.rm = TRUE
-  )
-  
-  q01 <- quantile(
-    reg[[d_var_d_all]],
-    .01,
-    na.rm = TRUE
-  )
-  
-  reg[, (w_var_d_all) :=
-        get(d_var_d_all)]
-  
-  reg[
-    get(w_var_d_all) >= q99,
-    (w_var_d_all) := q99
-  ]
-  
-  reg[
-    get(w_var_d_all) <= q01,
-    (w_var_d_all) := q01
-  ]
-  
-  
-  ##############################################################################
-  # Denominator = outside employment
-  ##############################################################################
-  
-  var_d_out <- paste0(
-    i,
-    "_share_outside_jobs"
-  )
-  
-  d_var_d_out <- paste0(
-    "d_",
-    i,
-    "_share_outside_jobs"
-  )
-  
-  reg[, (var_d_out) :=
+  # Outside employment
+  reg[, (paste0(i, "_share_outside_jobs")) :=
         get(i) / outside_jobs]
   
-  reg[, (d_var_d_out) :=
-        get(var_d_out) -
-        shift(
-          get(var_d_out),
-          type = "lag",
-          n = 1
-        ),
-      by = area_fips]
-  
-  w_var_d_out <- paste0(
-    "w_",
-    d_var_d_out
-  )
-  
-  q99 <- quantile(
-    reg[[d_var_d_out]],
-    .99,
-    na.rm = TRUE
-  )
-  
-  q01 <- quantile(
-    reg[[d_var_d_out]],
-    .01,
-    na.rm = TRUE
-  )
-  
-  reg[, (w_var_d_out) :=
-        get(d_var_d_out)]
-  
-  reg[
-    get(w_var_d_out) >= q99,
-    (w_var_d_out) := q99
-  ]
-  
-  reg[
-    get(w_var_d_out) <= q01,
-    (w_var_d_out) := q01
-  ]
-  
-  
-  ##############################################################################
-  # Denominator = resident service employment
-  ##############################################################################
-  
-  var_d_svc <- paste0(
-    i,
-    "_share_service_jobs"
-  )
-  
-  d_var_d_svc <- paste0(
-    "d_",
-    i,
-    "_share_service_jobs"
-  )
-  
-  reg[, (var_d_svc) :=
+  # Resident service employment
+  reg[, (paste0(i, "_share_service_jobs")) :=
         get(i) / total_servc_jobs]
   
-  reg[, (d_var_d_svc) :=
-        get(var_d_svc) -
-        shift(
-          get(var_d_svc),
-          type = "lag",
-          n = 1
-        ),
-      by = area_fips]
-  
-  w_var_d_svc <- paste0(
-    "w_",
-    d_var_d_svc
-  )
-  
-  q99 <- quantile(
-    reg[[d_var_d_svc]],
-    .99,
-    na.rm = TRUE
-  )
-  
-  q01 <- quantile(
-    reg[[d_var_d_svc]],
-    .01,
-    na.rm = TRUE
-  )
-  
-  reg[, (w_var_d_svc) :=
-        get(d_var_d_svc)]
-  
-  reg[
-    get(w_var_d_svc) >= q99,
-    (w_var_d_svc) := q99
-  ]
-  
-  reg[
-    get(w_var_d_svc) <= q01,
-    (w_var_d_svc) := q01
-  ]
-  
-  
-  ##############################################################################
-  # Denominator = resident goods employment
-  ##############################################################################
-  
-  var_d_good <- paste0(
-    i,
-    "_share_goods_jobs"
-  )
-  
-  d_var_d_good <- paste0(
-    "d_",
-    i,
-    "_share_goods_jobs"
-  )
-  
-  reg[, (var_d_good) :=
+  # Resident goods employment
+  reg[, (paste0(i, "_share_goods_jobs")) :=
         get(i) / total_goods_jobs]
   
-  reg[, (d_var_d_good) :=
-        get(var_d_good) -
-        shift(
-          get(var_d_good),
-          type = "lag",
-          n = 1
-        ),
-      by = area_fips]
-  
-  w_var_d_good <- paste0(
-    "w_",
-    d_var_d_good
-  )
-  
-  q99 <- quantile(
-    reg[[d_var_d_good]],
-    .99,
-    na.rm = TRUE
-  )
-  
-  q01 <- quantile(
-    reg[[d_var_d_good]],
-    .01,
-    na.rm = TRUE
-  )
-  
-  reg[, (w_var_d_good) :=
-        get(d_var_d_good)]
-  
-  reg[
-    get(w_var_d_good) >= q99,
-    (w_var_d_good) := q99
-  ]
-  
-  reg[
-    get(w_var_d_good) <= q01,
-    (w_var_d_good) := q01
-  ]
-  
-  
-  ##############################################################################
-  # Denominator = population
-  ##############################################################################
-  
-  var_d_pop <- paste0(
-    i,
-    "_share_population"
-  )
-  
-  d_var_d_pop <- paste0(
-    "d_",
-    i,
-    "_share_population"
-  )
-  
-  # Contemporaneous employment / population ratio
-  reg[, (var_d_pop) :=
+  # Population
+  reg[, (paste0(i, "_share_population")) :=
         get(i) / population]
+}
+
+
+################################################################################
+# Winsorize level shares at 1st / 99th percentiles
+################################################################################
+
+share_vars <- grep(
+  "_share_(resident_emp|workplace_emp|outside_jobs|service_jobs|goods_jobs|population)$",
+  names(reg),
+  value = TRUE
+)
+
+for (v in share_vars) {
   
-  # Change in employment / population ratio
-  reg[, (d_var_d_pop) :=
-        get(var_d_pop) -
-        shift(
-          get(var_d_pop),
-          type = "lag",
-          n = 1
-        ),
-      by = area_fips]
+  w_var <- paste0("w_", v)
   
-  w_d_var_d_pop <- paste0(
-    "w_",
-    d_var_d_pop
-  )
+  q01 <- quantile(reg[[v]], .01, na.rm = TRUE)
+  q99 <- quantile(reg[[v]], .99, na.rm = TRUE)
   
-  q99 <- quantile(
-    reg[[d_var_d_pop]],
-    .99,
-    na.rm = TRUE
-  )
+  reg[, (w_var) := get(v)]
   
-  q01 <- quantile(
-    reg[[d_var_d_pop]],
-    .01,
-    na.rm = TRUE
-  )
-  
-  reg[, (w_d_var_d_pop) :=
-        get(d_var_d_pop)]
-  
-  reg[
-    get(w_d_var_d_pop) >= q99,
-    (w_d_var_d_pop) := q99
-  ]
-  
-  reg[
-    get(w_d_var_d_pop) <= q01,
-    (w_d_var_d_pop) := q01
-  ]
+  reg[get(v) <= q01, (w_var) := q01]
+  reg[get(v) >= q99, (w_var) := q99]
 }
 
 reg[, workplace_emp_share_resident_emp := workplace_emp / resident_emp]
