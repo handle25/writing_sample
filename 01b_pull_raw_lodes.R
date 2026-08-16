@@ -18,7 +18,7 @@
 
 rm(list = ls())
 
-path <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data/lodes"
+path <- "D:/writing_sample/data"
 
 states <- tolower(state.abb)
 years <- c(2002, 2007, 2013)

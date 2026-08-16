@@ -1,4 +1,4 @@
-path <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
+path <- "D:/writing_sample/data"
 # using U.S. HS10 import values to select the dominant SIC within each HS6
 weights <- data.table(read_stata(paste0(path, "/peter_schott/imp_detl_yearly_91n/imp_detl_yearly_91n.dta")))
 weights <- rbind(weights, data.table(read_stata(paste0(path, "/peter_schott/imp_detl_yearly_95n/imp_detl_yearly_95n.dta"))), fill = TRUE)
@@ -82,4 +82,35 @@ lodes[, .N, by = .(county, year)][N > 1]
 fwrite(
   lodes,
   paste0(path, "/output/lodes_collapsed_all_no_crosswalk.csv")
+)
+
+
+# aggregate lodes for lps ------------------------------------------------------
+
+states <- tolower(state.abb)
+years <- c(2002:2023)
+
+lodes_list <- list()
+
+for (s in states) {
+ 
+    dt <- fread(
+      paste0(
+        path,
+        "/lodes/clean_lp_full/clean_lp_full_",
+        s,".csv"
+      )
+    )
+    
+    lodes_list[[length(lodes_list) + 1]] <- dt
+}
+
+lodes <- rbindlist(lodes_list, fill = TRUE)
+
+# sanity check
+lodes[, .N, by = .(county, year)][N > 1]
+
+fwrite(
+  lodes,
+  paste0(path, "/output/lp_lodes_collapsed_all_no_crosswalk.csv")
 )
