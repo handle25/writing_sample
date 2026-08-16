@@ -67,6 +67,7 @@ for (y in c(1995:1999)){
 
 pop <- rbindlist(pop_list) 
 acs <- rbind(acs, pop, fill = TRUE)
+acs[, area_fips := as.integer(area_fips)]
 
 ################################################################################
 # Read datasets
@@ -88,6 +89,7 @@ qcew[, .(
 qcew[, area_fips_str := sprintf("%06d", area_fips)]
 qcew[, state := floor(area_fips / 1000)]
 
+
 # PAUSE INCOMPLETE 
 # LODES ------------------------------------------------------------------------
 
@@ -97,7 +99,7 @@ lodes <- fread(
     "/output/lp_lodes_collapsed_all_no_crosswalk.csv"
   )
 )
-exit
+
 # IRS --------------------------------------------------------------------------
 
 # irs <- fread(
@@ -117,15 +119,15 @@ reg <- merge(
 )
 
 nrow(reg)
-
-reg <- merge(
-  reg,
-  irs,
-  by = c("area_fips", "year"),
-  all.x = TRUE
-)
-
-nrow(reg)
+# 
+# reg <- merge(
+#   reg,
+#   irs,
+#   by = c("area_fips", "year"),
+#   all.x = TRUE
+# )
+# 
+# nrow(reg)
 
 reg <- merge(
   reg,
@@ -172,34 +174,34 @@ reg[, t2 := as.integer(year == 2013)]
 reg[, statefip :=
       floor(as.integer(area_fips) / 1000)]
 
-
-################################################################################
-# Net migration flows
-################################################################################
-
-reg[, net_migration :=
-      as.integer(returns_3_inflow) -
-      as.integer(returns_3_outflow)]
-
-# Net migration relative to employed residents
-reg[, net_migration_share_resident_emp :=
-      net_migration / resident_emp]
-
-reg[, net_migration_share_workplace_emp :=
-      net_migration / workplace_emp]
-
-reg[, net_migration_share_population :=
-      net_migration / population]
-
-reg[, net_migration_share_population_t0 :=
-      net_migration / shift(population, type = "lag", n = 1), by = .(area_fips)]
-
-reg[, d_net_migration_pctchange :=
-      (net_migration -
-         shift(net_migration, n = 1)) /
-      shift(net_migration, n = 1),
-    by = area_fips]
-
+# 
+# ################################################################################
+# # Net migration flows
+# ################################################################################
+# 
+# reg[, net_migration :=
+#       as.integer(returns_3_inflow) -
+#       as.integer(returns_3_outflow)]
+# 
+# # Net migration relative to employed residents
+# reg[, net_migration_share_resident_emp :=
+#       net_migration / resident_emp]
+# 
+# reg[, net_migration_share_workplace_emp :=
+#       net_migration / workplace_emp]
+# 
+# reg[, net_migration_share_population :=
+#       net_migration / population]
+# 
+# reg[, net_migration_share_population_t0 :=
+#       net_migration / shift(population, type = "lag", n = 1), by = .(area_fips)]
+# 
+# reg[, d_net_migration_pctchange :=
+#       (net_migration -
+#          shift(net_migration, n = 1)) /
+#       shift(net_migration, n = 1),
+#     by = area_fips]
+# 
 # 
 # # Winsorize net migration share -----------------------------------------------
 # for (v in c("net_migration_share_workplace_emp", 
@@ -236,7 +238,7 @@ reg[, d_net_migration_pctchange :=
 #   
 #   
 # }
-
+# 
 # 
 # 
 # # Winsorize change in net migration -------------------------------------------
