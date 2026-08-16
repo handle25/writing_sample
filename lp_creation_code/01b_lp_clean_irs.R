@@ -1,5 +1,7 @@
 ##########################################################################
 # Created 8.16.2026
+
+# Data downloaded from https://www.irs.gov/statistics/soi-tax-stats-migration-data 
 ##########################################################################
 
 rm(list = ls())
@@ -358,17 +360,29 @@ for (y in 4:10) {
       # Find state-flow file
       ##########################################################################
       
-      file <- list.files(
-        year_path,
-        pattern = paste0(
+      if (y <= 6) {
+        
+        file_pattern <- paste0(
           state,
           f,
           "\\.xls$"
-        ),
+        )
+        
+      } else {
+        
+        file_pattern <- paste0(
+          f,
+          state,
+          "\\.xls$"
+        )
+      }
+      
+      file <- list.files(
+        year_path,
+        pattern = file_pattern,
         full.names = TRUE,
         ignore.case = TRUE
       )
-      
       
       ##########################################################################
       # Check
@@ -555,7 +569,7 @@ for (y in 4:10) {
 
 flows <- c("inflow", "outflow")
 
-for (y in 2011:2020) {
+for (y in 2011:2017) {
   
   y_0 <- sprintf("%02d", y %% 100)
   y_1 <- sprintf("%02d", (y + 1) %% 100)
