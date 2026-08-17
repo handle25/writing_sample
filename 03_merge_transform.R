@@ -8,6 +8,7 @@ rm(list = ls())
 
 # qcewdata 
 path <- "D:/writing_sample/data"
+local <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
 setwd(path)
 
 ################################################################################
@@ -765,3 +766,5 @@ fwrite(
     "/output/transformed_reg.csv"
   )
 )
+
+fwrite(reg, paste0(local, "/transformed_reg.csv"))

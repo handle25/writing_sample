@@ -28,7 +28,8 @@ library(janitor)
 library(dplyr)
 
 # qcewdata 
-path <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
+path <- "D:/writing_sample/data"
+figs <- "D:/writing_sample/figures"
 setwd(path)
 
 # Create a 1:1 crosswalk hs10 -> sic -------------------------------------------
@@ -183,3 +184,99 @@ ggplot(compare, aes(x = refYear)) +
     linetype = NULL,
     shape = NULL
   )
+
+ggsave(paste0(figs, "/trade_ts_comparison.pdf"))
+
+
+
+################################################################################
+# Plot full Comtrade time series
+################################################################################
+
+# Find all Comtrade files
+comtrade_files <- list.files(
+  paste0(path, "/comtrade"),
+  pattern = "^TradeData_8_15_2026_[0-9]{4}\\.csv$",
+  full.names = TRUE
+)
+
+# Read all years
+comtrade_all <- rbindlist(
+  lapply(comtrade_files, function(file) {
+    
+    fread(
+      file,
+      fill = TRUE,
+      quote = "\""
+    ) |>
+      fselect(
+        reporterCode, reporterISO, flowCode, partnerISO, refYear,
+        refPeriodId, freqCode, cifvalue, fobvalue, cmdCode, primaryValue
+      )
+    
+  }),
+  fill = TRUE
+)
+
+# Keep imports only
+comtrade_all <- comtrade_all[
+  flowCode == "M"
+]
+
+# Chinese and world imports into the U.S.
+comtrade_share <- comtrade_all[
+  reporterISO == "USA" &
+    partnerISO %in% c("CHN", "W00"),
+  .(
+    imports = sum(primaryValue, na.rm = TRUE)
+  ),
+  by = .(refYear, partnerISO)
+]
+
+# Put China and world imports in separate columns
+comtrade_share <- dcast(
+  comtrade_share,
+  refYear ~ partnerISO,
+  value.var = "imports"
+)
+
+# Chinese share of total U.S. imports
+comtrade_share[
+  ,
+  china_share_all := CHN / W00
+]
+
+# Check series
+comtrade_share[
+  order(refYear),
+  .(refYear, china_share_all)
+]
+
+comtrade_share[,china_share_all := china_share_all * 100]
+
+# Plot
+ggplot(
+  comtrade_share,
+  aes(
+    x = refYear,
+    y = china_share_all,
+    label = round(china_share_all, 0)
+  )
+) +
+  scale_x_continuous(
+    breaks = seq(1990, 2025, by = 5)
+  )+
+  geom_line() +
+  geom_point() +
+  theme_bw() +
+  geom_text(
+    vjust = -0.7,
+    size = 3
+  ) +
+  labs(
+    x = NULL,
+    y = "Chinese Share of U.S. Imports",
+    title = "Chinese Share of U.S. Imports: UN Comtrade",
+  )
+
+ggsave(paste0(figs, "/trade_ts_full.pdf"))
