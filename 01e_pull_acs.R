@@ -1,5 +1,5 @@
 rm(list = ls())
-path <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
+path <- "D:/writing_sample/data"
 mykey <- '8E96FC26-CD61-45D4-8F1B-2A6727156311'
 mykey <- "60478a05082dfaab8197a88cf6e696b52abd48bd"
 library(censusapi)
@@ -136,6 +136,30 @@ income <- paste0(
   "E"
 )
 
+vehicle <- paste0(
+  var_names[
+    grep(
+      "Estimate!!Total!!VEHICLES AVAILABLE!!Workers 16 years and over in households",
+      label,
+      ignore.case = TRUE
+    ),
+    name
+  ],
+  "E"
+)
+
+not_wfh <- paste0(
+  var_names[
+    grep(
+      "^Estimate!!Total!!Workers 16 years and over who did not work from home$",
+      label,
+      ignore.case = TRUE
+    ),
+    name
+  ],
+  "E"
+)
+
 ################################################################################
 # Variables to pull
 ################################################################################
@@ -148,6 +172,8 @@ vars_pull <- unique(
     
     # age
     age,
+
+    vehicle, not_wfh, 
     
     # modes of transportation
     tran,
@@ -432,7 +458,7 @@ for (j in seq_along(states)) {
     dt_state,
     paste0(
       path,
-      "/acs/acs_",
+      "/acs/lp_acs_",
       state,
       ".csv"
     )
@@ -482,7 +508,7 @@ dt_list <- vector("list", length(states))
 for (i in seq_along(states)) {
   
   dt_list[[i]] <- fread(
-    paste0(path, "/acs/acs_", states[i], ".csv")
+    paste0(path, "/acs/lp_acs_", states[i], ".csv")
   )
   
 }
@@ -495,5 +521,5 @@ acs_all <- rbindlist(
 
 fwrite(
   acs_all,
-  paste0(path, "/acs/acs_all.csv")
+  paste0(path, "/acs/lp_acs_all.csv")
 )
