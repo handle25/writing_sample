@@ -1,3 +1,10 @@
+################################################################################
+# Process QCEW data: 
+#   Data go from individual county x yera files, appended together into a single 
+# year file and then to a master file. 
+# 
+# Output: new_full_qcew_1995_2025.csv, county x industry x year 
+################################################################################
 
 # qcewdata 
 path <- "D:/writing_sample/data/qcew"

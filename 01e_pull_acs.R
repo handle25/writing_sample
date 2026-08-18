@@ -1,22 +1,14 @@
+################################################################################
+# File to pull census ACS data. 
+# Starting in 2009 when the ACS 5 year estimates began, this gives population 
+# and transportation statistics 2010-2024 
+# these paired with census population estimates can scale shock by population 
+################################################################################
 rm(list = ls())
 path <- "D:/writing_sample/data"
 mykey <- '8E96FC26-CD61-45D4-8F1B-2A6727156311'
 mykey <- "60478a05082dfaab8197a88cf6e696b52abd48bd"
-library(censusapi)
-library(tidycensus)
-library(data.table)
-library(collapse)
-library(janitor)
-library(tidyr)
-library(dplyr)
-library(stringr)
-library(jsonlite)
-library(httr)
 Sys.setenv(CENSUS_KEY = mykey)
-################################################################################
-# Paths
-################################################################################
-
 
 
 ################################################################################

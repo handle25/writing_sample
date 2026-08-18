@@ -10,12 +10,7 @@
 
 rm(list = ls())
 
-library(collapse)
-library(data.table)
-library(fixest)
-library(haven)
-
-path <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
+path <- "D:/writing_sample/data"
 setwd(path)
 
 # Read county -> CZ crosswalk

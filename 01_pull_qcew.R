@@ -1,3 +1,10 @@
+################################################################################
+# Pull QCEW industry composition data 
+# Contains information at the county level by employer location. 
+# will get country employment levels by industry 
+################################################################################
+
+
 library(data.table)
 
 path <- "D:/writing_sample/data/qcew"

@@ -9,7 +9,7 @@
 rm(list = ls())
 
 # qcewdata 
-path <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
+path <- "D:/writing_sample/data/qcew"
 setwd(path)
 
 # Create a 1:1 crosswalk hs10 -> hs6 -> naics ----------------------------------

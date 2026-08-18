@@ -16,16 +16,7 @@
 ################################################################################
 
 rm(list = ls())
-library(collapse) 
-library(readxl)
-library(data.table)
-library(fixest)
-library(sf)
-library(haven)
-library(tigris)
-library(ggplot2)
-library(janitor)
-library(dplyr)
+
 
 # qcewdata 
 path <- "D:/writing_sample/data"
@@ -259,8 +250,7 @@ ggplot(
   comtrade_share,
   aes(
     x = refYear,
-    y = china_share_all,
-    label = round(china_share_all, 0)
+    y = china_share_all
   )
 ) +
   scale_x_continuous(
@@ -270,7 +260,10 @@ ggplot(
   geom_point() +
   theme_bw() +
   geom_text(
+    data = comtrade_share[refYear %in% c(1991, 1995, 2000, 2007, 2011, 2017, 2025)],
+    aes(label = round(china_share_all, 0)),
     vjust = -0.7,
+    hjust = -.3, 
     size = 3
   ) +
   labs(

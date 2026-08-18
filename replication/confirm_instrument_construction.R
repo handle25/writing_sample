@@ -8,7 +8,7 @@
 rm(list = ls())
 
 # qcewdata 
-path <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
+path <- "D:/writing_sample/data"
 setwd(path)
 
 # read in data -----------------------------------------------------------------
