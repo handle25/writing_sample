@@ -15,9 +15,13 @@ setwd(path)
 # Population
 ################################################################################
 
-acs <- fread(
-  paste0(path, "/output/lp_population.csv")
-)
+acs <- fread(paste0(path, "/output/lp_population.csv"))
+acs <- acs[year != 2010, ]
+
+
+acs_1y <- 
+  fread(paste0(path, "/acs/acs_1y_2005_2024_commuting.csv"))
+# acs[, area_fips := as.integer(paste0(sprintf("%02.0f", state), sprintf("%03.0f", county)))]
 
 
 ################################################################################
@@ -66,7 +70,8 @@ reg <- merge(
   qcew,
   lodes,
   by.x = c("area_fips", "year"),
-  by.y = c("county", "year")
+  by.y = c("county", "year"), 
+  all.x = TRUE
 )
 
 nrow(reg)
@@ -87,11 +92,37 @@ reg <- merge(
   all.x = TRUE
 )
 
+reg <- merge(
+  reg, 
+  acs_1y, 
+  by = c("area_fips","year"), 
+  all.x = TRUE
+)
+
 setorder(
   reg,
   area_fips,
   year
 )
+
+# winsorize function 
+
+winsor <- function(dt, var, p = 0.01) {
+  
+  q <- quantile(
+    dt[[var]],
+    probs = c(p, 1 - p),
+    na.rm = TRUE
+  )
+  
+  w_var <- paste0("w_", var)
+  
+  dt[, (w_var) := pmin(
+    pmax(get(var), q[1]),
+    q[2]
+  )]
+}
+
 
 
 ################################################################################
@@ -119,8 +150,6 @@ setnames(
 # Basic regression variables
 ################################################################################
 
-reg[, t2 := as.integer(year == 2013)]
-
 # State FIPS for clustering
 reg[, statefip :=
       floor(as.integer(area_fips) / 1000)]
@@ -147,79 +176,17 @@ reg[, net_migration_share_population :=
 reg[, net_migration_share_population_t0 :=
       net_migration / shift(population, type = "lag", n = 1), by = .(area_fips)]
 
-reg[, d_net_migration_pctchange :=
-      (net_migration -
-         shift(net_migration, n = 1)) /
-      shift(net_migration, n = 1),
-    by = area_fips]
-
-
 # Winsorize net migration share -----------------------------------------------
 for (v in c("net_migration_share_workplace_emp",
             "net_migration_share_resident_emp",
             "net_migration_share_population",
-            "net_migration_share_population_t0")){
-  w_var <- paste0("w_", v)
-
-  q99 <- quantile(
-    reg[, get(v)],
-    .99,
-    na.rm = TRUE
-  )
-
-  q01 <- quantile(
-    reg[, get(v)],
-    .01,
-    na.rm = TRUE
-  )
-
-  reg[, (w_var) :=
-        get(v)]
-
-  reg[
-    get(v) >= q99,
-    (w_var) := q99
-  ]
-
-  reg[
-    get(v) <= q01,
-    (w_var) := q01
-  ]
-
-
-
+            "net_migration_share_population_t0", 
+            "IPW_US", "IPW_OTH")){
+ winsor(reg, v)
 }
 
 
-
-# Winsorize change in net migration -------------------------------------------
-
-q99 <- quantile(
-  reg[, d_net_migration_pctchange],
-  .99,
-  na.rm = TRUE
-)
-
-q01 <- quantile(
-  reg[, d_net_migration_pctchange],
-  .01,
-  na.rm = TRUE
-)
-
-reg[, w_d_net_migration_pctchange :=
-      d_net_migration_pctchange]
-
-reg[
-  d_net_migration_pctchange >= q99,
-  w_d_net_migration_pctchange := q99
-]
-
-reg[
-  d_net_migration_pctchange <= q01,
-  w_d_net_migration_pctchange := q01
-]
-
-
+# Winsorize vars ---------------------------------------------------------------
 ################################################################################
 # Employment-to-population ratios
 ################################################################################
@@ -232,93 +199,9 @@ reg[, resident_emp_population_ratio :=
 reg[, workplace_emp_population_ratio :=
       workplace_emp / population]
 
+winsor(reg, "resident_emp_population_ratio")
+winsor(reg, "workplace_emp_population_ratio")
 
-# Differences ------------------------------------------------------------------
-
-reg[, d_resident_emp_population_ratio :=
-      resident_emp_population_ratio -
-      shift(
-        resident_emp_population_ratio,
-        n = 1
-      ),
-    by = area_fips]
-
-reg[, d_workplace_emp_population_ratio :=
-      workplace_emp_population_ratio -
-      shift(
-        workplace_emp_population_ratio,
-        n = 1
-      ),
-    by = area_fips]
-
-
-# Winsorize resident employment / population ----------------------------------
-
-q99 <- quantile(
-  reg$d_resident_emp_population_ratio,
-  .99,
-  na.rm = TRUE
-)
-
-q01 <- quantile(
-  reg$d_resident_emp_population_ratio,
-  .01,
-  na.rm = TRUE
-)
-
-reg[, w_d_resident_emp_population_ratio :=
-      d_resident_emp_population_ratio]
-
-reg[
-  d_resident_emp_population_ratio >= q99,
-  w_d_resident_emp_population_ratio := q99
-]
-
-reg[
-  d_resident_emp_population_ratio <= q01,
-  w_d_resident_emp_population_ratio := q01
-]
-
-
-# Winsorize workplace employment / population ---------------------------------
-
-q99 <- quantile(
-  reg$d_workplace_emp_population_ratio,
-  .99,
-  na.rm = TRUE
-)
-
-q01 <- quantile(
-  reg$d_workplace_emp_population_ratio,
-  .01,
-  na.rm = TRUE
-)
-
-reg[, w_d_workplace_emp_population_ratio :=
-      d_workplace_emp_population_ratio]
-
-reg[
-  d_workplace_emp_population_ratio >= q99,
-  w_d_workplace_emp_population_ratio := q99
-]
-
-reg[
-  d_workplace_emp_population_ratio <= q01,
-  w_d_workplace_emp_population_ratio := q01
-]
-
-
-################################################################################
-# Variables to difference in levels
-################################################################################
-
-level_vars <- c(
-  grep("^outside.*_jobs$", names(reg), value = TRUE),
-  grep("^total.*_jobs$", names(reg), value = TRUE),
-  grep("^inside.*_jobs$", names(reg), value = TRUE)
-)
-
-level_vars <- unique(level_vars)
 ################################################################################
 # Construct level shares for LP outcomes
 ################################################################################
@@ -370,26 +253,48 @@ share_vars <- grep(
 )
 
 for (v in share_vars) {
-  
-  w_var <- paste0("w_", v)
-  
-  q01 <- quantile(reg[[v]], .01, na.rm = TRUE)
-  q99 <- quantile(reg[[v]], .99, na.rm = TRUE)
-  
-  reg[, (w_var) := get(v)]
-  
-  reg[get(v) <= q01, (w_var) := q01]
-  reg[get(v) >= q99, (w_var) := q99]
+  winsor(reg, v)
 }
 
 reg[, workplace_emp_share_resident_emp := workplace_emp / resident_emp]
-reg[, d_workplace_emp_share_resident_emp := 
-      workplace_emp_share_resident_emp - shift(workplace_emp_share_resident_emp, type = "lag", n = 1), 
-    by = .(area_fips)]
+
+################################################################################
+# Manufacturing employment relative to resident employment
+################################################################################
+
+reg[, manuf_share_emp :=
+      manufac_emp / workplace_emp]
+
+reg[, manuf_emp_share_pop :=
+      manufac_emp / population]
+
+winsor(reg, "manuf_share_emp")
+winsor(reg, "manuf_emp_share_pop")
+
+
+
 ################################################################################
 # Save
 ################################################################################
+# Duplicate county-years?
+reg[, .N, by = .(area_fips, year)][N > 1]
 
+# Sample coverage
+reg[, .(
+  N = .N,
+  counties = uniqueN(area_fips),
+  min_year = min(year, na.rm = TRUE),
+  max_year = max(year, na.rm = TRUE)
+)]
+
+# Missingness in variables used by the LP
+reg[, .(
+  miss_mfg = sum(is.na(w_manuf_share_emp)),
+  miss_mfg_pop = sum(is.na(w_manuf_emp_share_pop)),
+  miss_US = sum(is.na(w_IPW_US)),
+  miss_OTH = sum(is.na(w_IPW_OTH)),
+  miss_control = sum(is.na(l_shind_manuf))
+)]
 fwrite(
   reg,
   paste0(
