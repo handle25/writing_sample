@@ -107,7 +107,7 @@
     "w_d_net_migration_pctchange" =
       "$\\Delta Net\\ Migration$",
     
-    "w_net_migration_share_residnet_emp" =
+    "w_net_migration_share_resident_emp" =
       "$\\frac{Net\\ Migration}{Emp_{resident}}$",
     
     
@@ -162,7 +162,43 @@
       "$\\Delta \\frac{Emp_{resident, high}}{Jobs_{local}}$", 
     
     "d_workplace_emp_share_resident_emp" = 
-      "$\\Delta \\frac{Jobs_{local}}{Jobs_{resident}}$"
+      "$\\Delta \\frac{Jobs_{local}}{Jobs_{resident}}$",
+    
+    "net_migration" =
+      "$Net\\ Migration$",
+    
+    "w_d_net_migration_pctchange" =
+      "$\\Delta Net\\ Migration$",
+    
+    "w_net_migration_share_resident_emp" =
+      "$\\frac{Net\\ Migration}{Emp_{resident}}$",
+    
+    "w_net_migration_share_workplace_emp" =
+      "$\\frac{Net\\ Migration}{Emp_{workplace}}$",
+    
+    "w_net_migration_share_population" =
+      "$\\frac{Net\\ Migration}{Population}$",
+    
+    "w_net_migration_share_population_t0" =
+      "$\\frac{Net\\ Migration}{Population_{t_0}}$",
+    
+    "net_migration" =
+      "$Net\\ Migration$",
+    
+    "d_net_migration_pctchange" =
+      "$\\Delta Net\\ Migration$",
+    
+    "net_migration_share_resident_emp" =
+      "$\\frac{Net\\ Migration}{Emp_{resident}}$",
+    
+    "net_migration_share_workplace_emp" =
+      "$\\frac{Net\\ Migration}{Emp_{workplace}}$",
+    
+    "net_migration_share_population" =
+      "$\\frac{Net\\ Migration}{Population}$",
+    
+    "net_migration_share_population_t0" =
+      "$\\frac{Net\\ Migration}{Population_{t_0}}$"
   )
   
   
@@ -353,7 +389,7 @@
     
     # Outside employment
     "w_d_outside_jobs_share_resident_emp", 
-    "d_workplace_emp_share_resident_emp"
+    "w_d_workplace_emp_share_resident_emp"
   )
   
   mods_testing <- baseline(
@@ -369,11 +405,24 @@
   dep_vars <- c(
     
     # Services / commuting
-    "net_migration",
     "w_net_migration_share_resident_emp",
     "w_net_migration_share_workplace_emp",
     "w_net_migration_share_population",
     "w_net_migration_share_population_t0"
+  )
+  
+  mods_testing <- baseline(
+    dep_vars,
+    "w_migration"
+  )
+  
+  dep_vars <- c(
+    
+    # Services / commuting
+    "net_migration_share_resident_emp",
+    "net_migration_share_workplace_emp",
+    "net_migration_share_population",
+    "net_migration_share_population_t0"
   )
   
   mods_testing <- baseline(
