@@ -133,9 +133,18 @@ lodes[
 # IRS --------------------------------------------------------------------------
 
 irs <- fread(
-  paste0(path, "/irs_migration_full.csv")
+  paste0(path, "/irs/lp_irs_migration_full.csv")
 )
 
+cols <- setdiff(names(irs), c("area_fips", "year"))
+
+irs[, (cols) := lapply(.SD, as.numeric), .SDcols = cols]
+
+irs[year %in% c(2001:2006), new_year := 2007]
+irs[year %in% c(2007:2012), new_year := 2013]
+irs[, year := new_year]
+irs <- irs |> fgroup_by(year, area_fips) |> 
+  fsum()
 
 ################################################################################
 # Merge datasets
