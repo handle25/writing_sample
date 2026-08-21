@@ -31,7 +31,8 @@ state_crosswalk <- data.table(
 
 
 reg <- fread(paste0(path, "/output/lp_transformed_reg.csv"))
-
+reg[,test := log(resident_emp)]
+reg[, total_jobs := total_goods_jobs + total_servc_jobs + total_trade_jobs]
 # reg <- reg[year %in% c(2007:2017), ]
 # begin regressions ------------------------------------------------------------
 base_t0 <- "total_goods_jobs_share_resident_emp"
@@ -40,17 +41,22 @@ base_t0 <- "total_goods_jobs_share_resident_emp"
 significant <- c(
   "w_outside_jobs_share_resident_emp",
   "w_outside_servc_jobs_share_resident_emp",
-  "w_outside_servc_jobs_share_service_jobs",
+  "w_outside_goods_jobs_share_resident_emp",
   "w_outside_jobs_share_population",
   "w_total_goods_jobs_share_resident_emp",
   "w_manuf_share_emp",
   "w_manuf_emp_share_pop"
 )
-# 
-# significant <- c(
+length(unique(reg[,year]))
+reg <- reg[
+  area_fips %in% reg[, .N, by = area_fips][N == 31, area_fips]
+]
+           # significant <- c(
 #   "w_manuf_share_emp",
 #   "w_manuf_emp_share_pop"
 # )
+
+# significant <- c("test")
 
 pop02 <- reg[year == 2005,] |> 
   fmutate(pop02 = log(population)) |> 
@@ -150,7 +156,7 @@ for (i in significant){
   }
 }
 
-exit 
+
 ################################################################################
 # LP: Mean travel time to work
 ###############################################################################

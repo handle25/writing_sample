@@ -15,10 +15,57 @@ setwd(path)
 # Create a 1:1 crosswalk hs10 -> hs6 -> naics ----------------------------------
 # import the weights to take the largest naics value by hs6 code to map hs6 -> naics
 cw_1to1 <- fread(paste0(path, "/peter_schott/weights_extended_collapsed.csv"))
+cw <- read_stata(
+  "dataverse_files/rtp/rtp/data/analysis/m_flow_hs10_fm_new.dta"
+) |>
+  data.table()
 
+cw <- cw |>
+  fselect(hs10, naics_str, m_val)
+
+# Restore HS10 to exactly 10 digits
+cw[, hs10 := sprintf("%010.0f", hs10)]
+
+# Create HS6 correctly
+cw[, hs6 := substr(hs10, 1, 6)]
+
+# One NAICS mapping per HS6
+cw <- cw |>
+  fgroup_by(hs6) |>
+  fsummarize(naics = flast(naics_str)) |>
+  data.table()
+
+# Repeat fixed crosswalk for 2018-2026
+cw_new <- rbindlist(
+  lapply(2018:2026, function(y) {
+    tmp <- copy(cw)
+    tmp[, year := y]
+    tmp
+  })
+)
+
+cw_new[, hs6 := as.integer(hs6)]
+
+cw_1to1 <- rbind(
+  cw_1to1[year <= 2017],
+  cw_new,
+  fill = TRUE
+)
+
+setorder(cw_1to1, year, hs6)
+
+# 95 % agreement in hs6 -> naics after 2011 
+# test <- cw |> fgroup_by(hs6) |> 
+#   fsummarize(naics_new = as.character(flast(naics)))
+# test[,hs6 := as.integer(hs6)]
+# test <- merge(cw_1to1, 
+#               test, 
+#               by = "hs6")
+# test[, same := naics == naics_new]
+# mean(test[year > 2013,same])
 
 # Bring in trade data at hs6 level, merge to naics6 ---------------------------- 
-years <- c(1995:2018)
+years <- c(1995:2025)
 shock_list <- vector("list", length(years))
 
 for (i in seq_along(years)) {
@@ -35,7 +82,9 @@ for (i in seq_along(years)) {
       reporterCode, reporterISO, flowCode, partnerISO, refYear, refPeriodId,
       freqCode, cifvalue, fobvalue, cmdCode, primaryValue
     )
-  
+  shock[, cifvalue := as.numeric(cifvalue)]
+  shock[, fobvalue := as.numeric(fobvalue)]
+  shock[, primaryValue := as.numeric(primaryValue)]
   shock_list[[i]] <- shock
 }
 
@@ -70,7 +119,7 @@ new <- new[!is.na(naics)]
 new[reporterISO != "USA", reporterISO := "OTH"]
 
 # Keep imports from China only
-new <- new[partnerISO == "CHN", ]
+new <- new[partnerISO %in% c("CHN"), ]
 
 # Collapse to importer x NAICS6 x year
 rep <- new |>

@@ -20,6 +20,8 @@ qcew_naics3[,area_fips := as.character(as.integer(area_fips))]
 
 # trade data -> naics for naics level shock ------------------------------------ 
 shock <- fread(paste0(path, "/output/Delta_M_naics3_lp.csv"))
+crosswalk <- read_excel("cz00eqvv1.xls") |> 
+  data.table() 
 
 # population weights -----------------------------------------------------------
 acs <- rbind(fread(paste0(path, "/acs/co-est00int-tot.csv")), 
@@ -78,14 +80,14 @@ qcew_base <- merge(qcew_base, acs,
 
 # Baseline county employment
 qcew_base[, L_it := sum(annual_avg_emplvl, na.rm = TRUE),
-         by = .(area_fips)]
+          by = .(area_fips)]
 
 # Baseline county-industry employment
 qcew_base[, L_ijt := annual_avg_emplvl]
 
 # Baseline US employment in industry j
 qcew_base[, L_ujt := sum(annual_avg_emplvl, na.rm = TRUE),
-         by = .(industry_code)]
+          by = .(industry_code)]
 
 qcew_base <- qcew_base |> fselect(area_fips, 
                                   industry_code, 
