@@ -15,9 +15,7 @@ setwd(path)
 # Population
 ################################################################################
 
-acs <- fread(paste0(path, "/output/lp_population.csv"))
-acs <- acs[year != 2010, ]
-
+acs <- fread(paste0(path, "/acs/population_1995_2023.csv"))
 
 acs_1y <- 
   fread(paste0(path, "/acs/acs_1y_2005_2024_commuting.csv"))
