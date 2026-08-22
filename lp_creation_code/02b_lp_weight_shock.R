@@ -15,67 +15,53 @@ setwd(path)
 # has location area_fips which is county level 
 # save
 qcew_naics3 <- fread(paste0(path, "/qcew/clean/new_full_qcew_1995_2025.csv"))
+
+# Industry concentration -------------------------------------------------------
+
+qcew_naics3[, total_emp :=
+              sum(annual_avg_emplvl, na.rm = TRUE),
+            by = .(area_fips, year)]
+
+qcew_naics3[, industry_share :=
+              annual_avg_emplvl / total_emp]
+
+county_concentration <- qcew_naics3[
+  ,
+  .(
+    industry_hhi = sum(industry_share^2, na.rm = TRUE),
+    industry_share_sd = sd(industry_share, na.rm = TRUE)
+  ),
+  by = .(area_fips, year)
+]
+
+qcew_naics3 <- merge(
+  qcew_naics3,
+  county_concentration,
+  by = c("area_fips", "year"),
+  all.x = TRUE
+)
+
 qcew_naics3[, industry_code := as.integer(industry_code)]
 qcew_naics3[,area_fips := as.character(as.integer(area_fips))]
 
 # trade data -> naics for naics level shock ------------------------------------ 
 shock <- fread(paste0(path, "/output/Delta_M_naics3_lp.csv"))
 
-# population weights -----------------------------------------------------------
-acs <- rbind(fread(paste0(path, "/acs/co-est00int-tot.csv")), 
-             fread(paste0(path,"/acs/co-est2020.csv")), fill = TRUE)
 
-acs <- melt(
-  acs,
-  id.vars = c("STATE", "COUNTY"),
-  measure.vars = patterns("^POPESTIMATE"),
-  variable.name = "year",
-  value.name = "population"
-) |>
-  fmutate(year = as.integer(substr(year, 12, 15)))
-
-# Drop rows created from years not covered by that source file
-acs <- acs[!is.na(population)]
-
-# Drop state totals
-acs <- acs[COUNTY != 0]
-
-acs[, area_fips := as.character(paste0(
-  sprintf("%02d", STATE),
-  sprintf("%03d", COUNTY)
-))]
-
-pop_list <- list()
-for (y in c(1995:1999)){
-  url <- paste0(
-    "https://www2.census.gov/programs-surveys/popest/",
-    "tables/1990-2000/intercensal/st-co/stch-icen", y, ".txt"
-  )
-  
-  pop <- fread(url)
-  
-  names <- c("year","area_fips","age","sex","eth","population")
-  
-  names(pop) <- names
-  pop <- pop |> 
-    fgroup_by(area_fips) |> 
-    fsummarize(population = fsum(population)) |> 
-    fmutate(year = y) 
-  
-  pop_list[[length(pop_list) + 1]] <- pop
-}
-
-pop <- rbindlist(pop_list) 
-acs <- rbind(acs, pop, fill = TRUE)
-acs[,area_fips := as.character(as.integer(area_fips))]
+acs <- fread(paste0(path, "/acs/population_1995_2023.csv"))
+acs[, area_fips := as.character(area_fips)]
 
 # Create QCEW employment weights -----------------------------------------------
 # take one base period for now 
-qcew_base <- qcew_naics3[year == 2004,]
+qcew_base <- qcew_naics3[year == 2000,]
 qcew_base <- merge(qcew_base, acs, 
                    by = c("area_fips", "year"), 
                    all.x = TRUE)
-
+setnames(
+  qcew_base,
+  c("industry_hhi", "industry_share_sd"),
+  c("industry_hhi_base", "industry_share_sd_base")
+)
 # Baseline county employment
 qcew_base[, L_it := sum(annual_avg_emplvl, na.rm = TRUE),
          by = .(area_fips)]
@@ -87,10 +73,15 @@ qcew_base[, L_ijt := annual_avg_emplvl]
 qcew_base[, L_ujt := sum(annual_avg_emplvl, na.rm = TRUE),
          by = .(industry_code)]
 
-qcew_base <- qcew_base |> fselect(area_fips, 
-                                  industry_code, 
-                                  L_it, L_ijt, L_ujt, 
-                                  population)
+qcew_base <- qcew_base |>
+  fselect(
+    area_fips,
+    industry_code,
+    L_it, L_ijt, L_ujt,
+    population,
+    industry_hhi_base,
+    industry_share_sd_base
+  )
 
 nrow(qcew_naics3)
 qcew_naics3 <- merge(
@@ -113,23 +104,37 @@ qcew_rep[is.na(Delta_M_US),  Delta_M_US := 0]
 qcew_rep[is.na(Delta_M_OTH), Delta_M_OTH := 0]
 
 # Same employment weights applied to both trade changes
-qcew_rep[, IPW_US :=
+qcew_rep[, IPW_US_pop :=
            (L_ijt / L_ujt) * (Delta_M_US / population)]
 
-qcew_rep[, IPW_OTH :=
+qcew_rep[, IPW_OTH_pop :=
            (L_ijt / L_ujt) * (Delta_M_OTH / population)]
+
+qcew_rep[, IPW_US :=
+           (L_ijt / L_ujt) * (Delta_M_US / L_it)]
+
+qcew_rep[, IPW_OTH :=
+           (L_ijt / L_ujt) * (Delta_M_OTH / L_it)]
 
 # scale by 1000 for thousand dollars per worker hour 
 qcew_rep[, IPW_US  := IPW_US / 1000]
 qcew_rep[, IPW_OTH := IPW_OTH / 1000]
+qcew_rep[, IPW_US_pop  := IPW_US_pop / 1000]
+qcew_rep[, IPW_OTH_pop := IPW_OTH_pop / 1000]
 
 
 # Collapse across industries to county x period
 instrument <- qcew_rep |>
   fgroup_by(area_fips, year) |>
   fsummarize(
-    IPW_US  = fsum(IPW_US),
-    IPW_OTH = fsum(IPW_OTH)
+    IPW_US      = fsum(IPW_US, na.rm = TRUE),
+    IPW_OTH     = fsum(IPW_OTH, na.rm = TRUE),
+    IPW_US_pop  = fsum(IPW_US_pop, na.rm = TRUE),
+    IPW_OTH_pop = fsum(IPW_OTH_pop, na.rm = TRUE),
+    industry_hhi_base =
+      fmean(industry_hhi_base, na.rm = TRUE),
+    industry_share_sd_base =
+      fmean(industry_share_sd_base, na.rm = TRUE)
   ) |>
   data.table()
 fwrite(instrument, file = paste0(path, "/output/lp_final_ipw_naics3.csv"))
@@ -137,6 +142,12 @@ fwrite(instrument, file = paste0(path, "/output/lp_final_ipw_naics3.csv"))
 # Get employment outcome -------------------------------------------------------
 # Use NAICS2 data since manufacturing is identified cleanly there
 qcew_outcome <- fread(paste0(path, "/qcew/clean/new_full_qcew_1995_2025.csv"))
+qcew_outcome <- merge(
+  qcew_outcome,
+  county_concentration,
+  by = c("area_fips", "year"),
+  all.x = TRUE
+)
 qcew_outcome[, industry_code := as.integer(industry_code)]
 qcew_outcome[, area_fips := as.character(area_fips)]
 qcew_outcome[,naics2:= floor(as.integer(industry_code/10))]
@@ -146,7 +157,11 @@ qcew_outcome[,naics2:= floor(as.integer(industry_code/10))]
 county_emp <- qcew_outcome |>
   fgroup_by(area_fips, year) |>
   fsummarize(
-    total_emp = fsum(annual_avg_emplvl)
+    total_emp = fsum(annual_avg_emplvl),
+    industry_hhi =
+      fmean(industry_hhi, na.rm = TRUE),
+    industry_share_sd =
+      fmean(industry_share_sd, na.rm = TRUE)
   ) |>
   data.table()
 
