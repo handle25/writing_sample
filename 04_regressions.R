@@ -213,7 +213,7 @@
       fml <- as.formula(
         paste0(
           y,
-          " ~ t2 + l_shind_manuf | ",
+          " ~ t2 + l_shind_manuf  | ",
           "IPW_US ~ IPW_OTH"
         )
       )
