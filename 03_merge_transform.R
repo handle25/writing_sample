@@ -193,12 +193,9 @@ diff_denom_all(reg, "resident_emp")
 ################################################################################
 
 # Employment of county residents / county population
-reg[, resident_emp_population_ratio :=
-      resident_emp / population]
-
-# Employment located in county / county population
-reg[, workplace_emp_population_ratio :=
-      workplace_emp / population]
+make_share_diff(reg, "resident_emp", "population")
+make_share_diff(reg, "workplace_emp", "population")
+make_share_diff(reg, "workplace_emp", "resident_emp")
 
 
 ################################################################################
@@ -217,10 +214,13 @@ for (i in level_vars) {
   diff_denom_all(reg, i)
 }
 
-reg[, workplace_emp_share_resident_emp := workplace_emp / resident_emp]
-reg[, d_workplace_emp_share_resident_emp := 
-      workplace_emp_share_resident_emp - shift(workplace_emp_share_resident_emp, type = "lag", n = 1), 
-    by = .(area_fips)]
+winsor(reg, "IPW_US") 
+winsor(reg, "IPW_OTH") 
+
+# net migration are already flows, no need to difference. 
+winsor(reg, "net_migration_share_resident_emp")
+winsor(reg, "net_migration_share_workplace_emp")
+winsor(reg, "net_migration_share_population")
 ################################################################################
 # Save
 ################################################################################
