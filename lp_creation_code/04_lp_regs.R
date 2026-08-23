@@ -125,10 +125,11 @@ run_lp <- function(
       p,
       height = 4,
       width = 4
-    )
+    ) 
+    
   }
-  
   return(results)
+  show(p)
 }
 
 state_crosswalk <- data.table(
@@ -173,6 +174,16 @@ reg <- reg[
 results <- run_lp(
   reg,
   "w_outside_jobs_share_resident_emp"
+)
+
+q99 <- quantile(reg[,industry_hhi] , probs = .99, na.rm = T)
+q01 <- quantile(reg[,industry_hhi] , probs = .01, na.rm = T)
+
+reg[industry_hhi < q01, industry_hhi := q01]
+reg[industry_hhi > q99, industry_hhi := q99]
+results <- run_lp(
+  reg,
+  "industry_hhi"
 )
 
      

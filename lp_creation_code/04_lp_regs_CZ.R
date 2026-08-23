@@ -73,12 +73,13 @@ run_lp <- function(
       as.formula(
         paste0(
           var,
-          " ~ l1_y + l2_y + l3_y + l4_y + industry_hhi_base | year | ",
+          " ~ l1_y + l2_y + l3_y + l4_y  | year | ",
           "w_IPW_US ~ w_IPW_OTH"
         )
       ),
       data = reg[year %in% start_year:end_year],
-      cluster = ~commuting_zone_id_2000 + year
+      cluster = ~state + year, 
+      weight = ~baseline_emp
     )
     
     print(summary(mod))
@@ -170,6 +171,18 @@ reg <- reg[
     reg[, .N, by = commuting_zone_id_2000][N == length(unique(reg[,year])), commuting_zone_id_2000]
 ]
 
+q99 <- quantile(reg[,industry_hhi] , probs = .98, na.rm = T)
+q01 <- quantile(reg[,industry_hhi] , probs = .02, na.rm = T)
+
+reg[industry_hhi < q01, industry_hhi := q01]
+reg[industry_hhi > q99, industry_hhi := q99]
+
+results <- run_lp(
+  reg = reg,
+  "industry_hhi"
+)
+
+
 # reg[, w_outside_jobs_share_resident_emp := log(w_outside_jobs_share_resident_emp)]
 results <- run_lp(
   reg,
@@ -195,7 +208,4 @@ results_migration <- run_lp(
 
 
 reg[, mean_travel_time_to_work_minutes := log(mean_travel_time_to_work_minutes)]
-results <- run_lp(
-  reg = reg,
-  "mean_travel_time_to_work_minutes"
-)
+

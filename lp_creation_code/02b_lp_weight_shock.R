@@ -33,6 +33,45 @@ county_concentration <- qcew_naics3[
   ),
   by = .(area_fips, year)
 ]
+# Keep nonmanufacturing industries only
+county_concentration_nomanufac <- qcew_naics3[
+  !(industry_code %in% 311:339)
+]
+
+# Total nonmanufacturing employment
+county_concentration_nomanufac[
+  ,
+  nonmanuf_total_emp :=
+    sum(annual_avg_emplvl, na.rm = TRUE),
+  by = .(area_fips, year)
+]
+
+# Industry share, renormalized within nonmanufacturing
+county_concentration_nomanufac[
+  ,
+  industry_share_nomanufac :=
+    annual_avg_emplvl / nonmanuf_total_emp
+]
+
+# Nonmanufacturing concentration
+county_concentration_nomanufac <- county_concentration_nomanufac[
+  ,
+  .(
+    industry_hhi_nomanufac =
+      sum(industry_share_nomanufac^2, na.rm = TRUE),
+    
+    industry_share_sd_nomanufac =
+      sd(industry_share_nomanufac, na.rm = TRUE)
+  ),
+  by = .(area_fips, year)
+]
+
+county_concentration <- merge(
+  county_concentration,
+  county_concentration_nomanufac,
+  by = c("area_fips", "year"),
+  all.x = TRUE
+)
 
 qcew_naics3 <- merge(
   qcew_naics3,
@@ -161,7 +200,11 @@ county_emp <- qcew_outcome |>
     industry_hhi =
       fmean(industry_hhi, na.rm = TRUE),
     industry_share_sd =
-      fmean(industry_share_sd, na.rm = TRUE)
+      fmean(industry_share_sd, na.rm = TRUE),
+    industry_hhi_nomanufac =
+      fmean(industry_hhi_nomanufac, na.rm = TRUE),
+    industry_share_sd_nomanufac =
+      fmean(industry_share_sd_nomanufac, na.rm = TRUE)
   ) |>
   data.table()
 
