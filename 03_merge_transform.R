@@ -235,4 +235,4 @@ fwrite(
   )
 )
 
-fwrite(reg, paste0(local, "/transformed_reg.csv"))
+fwrite(reg, paste0(local, "/output/transformed_reg.csv"))

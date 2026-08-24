@@ -8,6 +8,7 @@
 rm(list = ls())
 
 # qcewdata 
+local <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
 path <- "D:/writing_sample/data"
 setwd(path)
 
@@ -226,7 +227,7 @@ winsor(reg, "net_migration_share_resident_emp")
 winsor(reg, "net_migration_share_workplace_emp")
 winsor(reg, "net_migration_share_population")
 winsor(reg, "manufac_emp_share_resident_emp")
-winsor(reg, "manufac_share_resident_emp")
+winsor(reg, "manufac_emp_share_population")
 
 ################################################################################
 # Save
@@ -244,7 +245,7 @@ reg[, .(
 
 # Missingness in variables used by the LP
 reg[, .(
-  miss_mfg = sum(is.na(w_manufac_share_resident_emp)),
+  miss_mfg = sum(is.na(w_manufac_emp_share_resident_emp)),
   miss_mfg_pop = sum(is.na(w_manufac_emp_share_population)),
   miss_US = sum(is.na(w_IPW_US)),
   miss_OTH = sum(is.na(w_IPW_OTH)),
@@ -254,6 +255,14 @@ fwrite(
   reg,
   paste0(
     path,
+    "/output/lp_transformed_reg.csv"
+  )
+)
+
+fwrite(
+  reg,
+  paste0(
+    local,
     "/output/lp_transformed_reg.csv"
   )
 )

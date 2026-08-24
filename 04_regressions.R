@@ -2,6 +2,7 @@
 # Regressions 
 ################################################################################
 path <- "D:/writing_sample/data"
+local <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
 reg <- fread(paste0(path, "/output/transformed_reg.csv"))
 reg <- reg[year %in% c(2000, 2007), ]
 reg[, t2 := as.integer(year == 2007)]

@@ -9,6 +9,7 @@ rm(list = ls())
 
 # qcewdata 
 path <- "D:/writing_sample/data"
+local <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
 setwd(path)
 
 crosswalk <- read_excel("cz00eqvv1.xls") |> 
@@ -362,6 +363,14 @@ fwrite(
   reg,
   paste0(
     path,
+    "/output/lp_transformed_reg_CZ.csv"
+  )
+)
+
+fwrite(
+  reg,
+  paste0(
+    local,
     "/output/lp_transformed_reg_CZ.csv"
   )
 )
