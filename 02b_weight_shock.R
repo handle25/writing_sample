@@ -46,46 +46,7 @@ qcew_naics3 <- rbindlist(full_qcew3_list)
 shock <- fread(paste0(path, "/output/Delta_M_naics3.csv"))
 
 # population weights -----------------------------------------------------------
-acs <- rbind(fread(paste0(path, "/acs/co-est00int-tot.csv")), 
-             fread(paste0(path,"/acs/co-est2020.csv")), fill = TRUE)
-
-acs <- melt(
-  acs,
-  id.vars = c("STATE", "COUNTY"),
-  measure.vars = patterns("^POPESTIMATE"),
-  variable.name = "year",
-  value.name = "population"
-) |>
-  fmutate(year = as.integer(substr(year, 12, 15)))
-
-# Drop rows created from years not covered by that source file
-acs <- acs[!is.na(population)]
-
-# Drop state totals
-acs <- acs[COUNTY != 0]
-
-acs[, area_fips := as.character(paste0(
-  sprintf("%02d", STATE),
-  sprintf("%03d", COUNTY)
-))]
-
-
-
-url_1995 <- paste0(
-  "https://www2.census.gov/programs-surveys/popest/",
-  "tables/1990-2000/intercensal/st-co/stch-icen1995.txt"
-)
-
-pop1995 <- fread(url_1995)
-names <- c("year","area_fips","age","sex","eth","population")
-
-names(pop1995) <- names
-pop1995 <- pop1995 |> 
-  fgroup_by(area_fips) |> 
-  fsummarize(population = fsum(population)) |> 
-  fmutate(year = 1995) 
-
-acs <- rbind(acs, pop1995, fill = TRUE)
+acs <- fread(paste0(path, "/acs/population_1995_2023.csv"))
 
 acs[,area_fips := as.character(as.integer(area_fips))]
 # Create QCEW employment weights -----------------------------------------------
@@ -186,7 +147,6 @@ qcew_base <- merge(
   # all.x = TRUE
 )
 nrow(qcew_base)
-
 
 qcew_base[, baseline_year := year]
 
@@ -316,7 +276,6 @@ fwrite(base, paste0(path, "/output/weighted_qcew.csv"))
 # check regs 2007 --------------------------------------------------------------
 reg <- base[year %in% c(2000, 2007), ]# Period indicator
 reg[, t2 := as.integer(year == 2007)]
-reg[, t2 := as.integer(year == 2007)]
 
 # State FIPS for clustering
 reg[, statefip := floor(as.integer(area_fips) / 1000)]
@@ -334,7 +293,6 @@ mod <- feols(
   cluster = ~statefip
 )
 
-summary(mod, stage = 1)
 summary(mod, stage = 2)
 
 mod <- feols(

@@ -225,7 +225,8 @@ winsor(reg, "IPW_OTH")
 winsor(reg, "net_migration_share_resident_emp")
 winsor(reg, "net_migration_share_workplace_emp")
 winsor(reg, "net_migration_share_population")
-
+winsor(reg, "manufac_emp_share_resident_emp")
+winsor(reg, "manufac_share_resident_emp")
 
 ################################################################################
 # Save
@@ -243,8 +244,8 @@ reg[, .(
 
 # Missingness in variables used by the LP
 reg[, .(
-  miss_mfg = sum(is.na(w_manuf_share_emp)),
-  miss_mfg_pop = sum(is.na(w_manuf_emp_share_pop)),
+  miss_mfg = sum(is.na(w_manufac_share_resident_emp)),
+  miss_mfg_pop = sum(is.na(w_manufac_emp_share_population)),
   miss_US = sum(is.na(w_IPW_US)),
   miss_OTH = sum(is.na(w_IPW_OTH)),
   miss_control = sum(is.na(l_shind_manuf))
