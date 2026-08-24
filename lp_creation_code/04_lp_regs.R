@@ -170,6 +170,27 @@ reg <- reg[
   area_fips %in% reg[, .N, by = area_fips][N == length(unique(reg[,year])), area_fips]
 ]
 
+results <- run_lp(
+  reg,
+  "industry_hhi"
+)
+
+q99 <- quantile(reg[,industry_hhi] , probs = .99, na.rm = T)
+q01 <- quantile(reg[,industry_hhi] , probs = .01, na.rm = T)
+
+reg[industry_hhi < q01, industry_hhi := q01]
+reg[industry_hhi > q99, industry_hhi := q99]
+results <- run_lp(
+  reg,
+  "industry_hhi"
+)
+
+results <- run_lp(
+  reg,
+  "industry_hhi_nomanufac"
+)
+
+
 # reg[, w_outside_jobs_share_resident_emp := log(w_outside_jobs_share_resident_emp)]
 results <- run_lp(
   reg,

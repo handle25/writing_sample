@@ -104,7 +104,6 @@ setorder(
 )
 
 # winsorize function 
-
 winsor <- function(dt, var, p = 0.01) {
   
   q <- quantile(

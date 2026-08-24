@@ -59,6 +59,46 @@ cz_concentration <- qcew_naics3[
   by = .(commuting_zone_id_2000, year)
 ]
 
+# Keep nonmanufacturing industries only
+cz_concentration_nomanufac <- qcew_naics3[
+  !(industry_code %in% 311:339)
+]
+
+# Total nonmanufacturing employment
+cz_concentration_nomanufac[
+  ,
+  nonmanuf_total_emp :=
+    sum(annual_avg_emplvl, na.rm = TRUE),
+  by = .(commuting_zone_id_2000, year)
+]
+
+# Industry share, renormalized within nonmanufacturing
+cz_concentration_nomanufac[
+  ,
+  industry_share_nomanufac :=
+    annual_avg_emplvl / nonmanuf_total_emp
+]
+
+# Nonmanufacturing concentration
+cz_concentration_nomanufac <- cz_concentration_nomanufac[
+  ,
+  .(
+    industry_hhi_nomanufac =
+      sum(industry_share_nomanufac^2, na.rm = TRUE),
+    
+    industry_share_sd_nomanufac =
+      sd(industry_share_nomanufac, na.rm = TRUE)
+  ),
+  by = .(commuting_zone_id_2000, year)
+]
+
+cz_concentration <- merge(
+  cz_concentration,
+  cz_concentration_nomanufac,
+  by = c("commuting_zone_id_2000", "year"),
+  all.x = TRUE
+)
+
 qcew_naics3 <- merge(
   qcew_naics3,
   cz_concentration,
@@ -68,6 +108,7 @@ qcew_naics3 <- merge(
 
 #save a collapsed copy for later analysis 
 qcew_outcome <- copy(qcew_naics3)
+
 
 # population weights -----------------------------------------------------------
 acs <- fread(paste0(path, "/acs/population_1995_2023.csv"))
@@ -185,7 +226,10 @@ cz_emp <- qcew_outcome |>
     total_emp = fsum(annual_avg_emplvl),
     industry_hhi = fmean(industry_hhi, na.rm = TRUE),
     industry_share_sd =
-      fmean(industry_share_sd, na.rm = TRUE)
+      fmean(industry_share_sd, na.rm = TRUE), 
+    industry_hhi_nomanufac = fmean(industry_hhi_nomanufac, na.rm = TRUE),
+    industry_share_sd_nomanufac =
+      fmean(industry_share_sd_nomanufac, na.rm = TRUE)
   ) |>
   data.table()
 

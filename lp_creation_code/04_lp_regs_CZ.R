@@ -73,7 +73,7 @@ run_lp <- function(
       as.formula(
         paste0(
           var,
-          " ~ l1_y + l2_y + l3_y + l4_y  | year | ",
+          " ~ l1_y + l2_y + l3_y + l4_y + industry_hhi_base | year | ",
           "w_IPW_US ~ w_IPW_OTH"
         )
       ),
@@ -171,16 +171,22 @@ reg <- reg[
     reg[, .N, by = commuting_zone_id_2000][N == length(unique(reg[,year])), commuting_zone_id_2000]
 ]
 
-q99 <- quantile(reg[,industry_hhi] , probs = .98, na.rm = T)
-q01 <- quantile(reg[,industry_hhi] , probs = .02, na.rm = T)
+q99 <- quantile(reg[,industry_hhi_nomanufac] , probs = .98, na.rm = T)
+q01 <- quantile(reg[,industry_hhi_nomanufac] , probs = .02, na.rm = T)
 
-reg[industry_hhi < q01, industry_hhi := q01]
-reg[industry_hhi > q99, industry_hhi := q99]
+reg[industry_hhi_nomanufac < q01, industry_hhi_nomanufac := q01]
+reg[industry_hhi_nomanufac > q99, industry_hhi_nomanufac := q99]
 
 results <- run_lp(
   reg = reg,
   "industry_hhi"
 )
+
+results <- run_lp(
+  reg = reg,
+  "industry_hhi_nomanufac"
+)
+
 
 
 # reg[, w_outside_jobs_share_resident_emp := log(w_outside_jobs_share_resident_emp)]
