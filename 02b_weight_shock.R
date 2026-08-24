@@ -8,7 +8,7 @@
 rm(list = ls())
 
 # qcewdata 
-path <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
+path <- "D:/writing_sample/data"
 setwd(path)
 
 # read in country industry level data ------------------------------------------
@@ -95,6 +95,89 @@ acs[,area_fips := as.character(as.integer(area_fips))]
 # ------------------------------------------------------------------------------
 qcew_naics3[, industry_code := as.integer(industry_code)]
 
+# create industry shares -------------------------------------------------------
+
+# Total employment in county
+qcew_naics3[
+  ,
+  total_emp :=
+    sum(annual_avg_emplvl, na.rm = TRUE),
+  by = .(area_fips, year)
+]
+
+# Industry employment share
+qcew_naics3[
+  ,
+  industry_share :=
+    annual_avg_emplvl / total_emp
+]
+
+# Overall industry concentration
+county_concentration <- qcew_naics3[
+  ,
+  .(
+    industry_hhi =
+      sum(industry_share^2, na.rm = TRUE),
+    
+    industry_share_sd =
+      sd(industry_share, na.rm = TRUE)
+  ),
+  by = .(area_fips, year)
+]
+
+
+# Nonmanufacturing concentration ----------------------------------------------
+
+# Keep nonmanufacturing industries only
+county_concentration_nomanufac <- qcew_naics3[
+  !(industry_code %in% 311:339)
+]
+
+# Total nonmanufacturing employment
+county_concentration_nomanufac[
+  ,
+  nonmanuf_total_emp :=
+    sum(annual_avg_emplvl, na.rm = TRUE),
+  by = .(area_fips, year)
+]
+
+# Industry share, renormalized within nonmanufacturing
+county_concentration_nomanufac[
+  ,
+  industry_share_nomanufac :=
+    annual_avg_emplvl / nonmanuf_total_emp
+]
+
+# Nonmanufacturing concentration
+county_concentration_nomanufac <- county_concentration_nomanufac[
+  ,
+  .(
+    industry_hhi_nomanufac =
+      sum(industry_share_nomanufac^2, na.rm = TRUE),
+    
+    industry_share_sd_nomanufac =
+      sd(industry_share_nomanufac, na.rm = TRUE)
+  ),
+  by = .(area_fips, year)
+]
+
+
+# Merge concentration measures
+county_concentration <- merge(
+  county_concentration,
+  county_concentration_nomanufac,
+  by = c("area_fips", "year"),
+  all.x = TRUE
+)
+
+qcew_naics3 <- merge(
+  qcew_naics3,
+  county_concentration,
+  by = c("area_fips", "year"),
+  all.x = TRUE
+)
+
+# ------------------------------------------------------------------------------
 qcew_base <- qcew_naics3[year %in% c(1995, 2000, 2007)]
 nrow(qcew_base)
 qcew_base <- merge(
@@ -152,7 +235,9 @@ instrument <- qcew_rep |>
   fgroup_by(area_fips, year) |>
   fsummarize(
     IPW_US  = fsum(IPW_US),
-    IPW_OTH = fsum(IPW_OTH)
+    IPW_OTH = fsum(IPW_OTH), 
+    industry_hhi = fmean(industry_hhi),
+    industry_hhi_nomanufac = fmean(industry_hhi_nomanufac)
   ) |>
   data.table()
 fwrite(instrument, file = paste0(path, "/output/final_ipw_naics3.csv"))
@@ -253,7 +338,30 @@ summary(mod, stage = 1)
 summary(mod, stage = 2)
 
 mod <- feols(
-  d_sh_empl_mfg ~ t2 |
+  d_sh_empl_mfg ~ t2  |
+    IPW_US ~ IPW_OTH,
+  data = reg,
+  weights = ~baseline_emp,
+  cluster = ~statefip
+)
+
+summary(mod, stage = 2)
+
+
+mod <- feols(
+  d_sh_empl_mfg ~ t2 +industry_hhi |
+    IPW_US ~ IPW_OTH,
+  data = reg,
+  weights = ~baseline_emp,
+  cluster = ~statefip
+)
+
+summary(mod, stage = 2)
+
+
+
+mod <- feols(
+  industry_hhi_nomanufac ~ t2 |
     IPW_US ~ IPW_OTH,
   data = reg,
   weights = ~baseline_emp,

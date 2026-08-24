@@ -11,6 +11,47 @@ rm(list = ls())
 path <- "D:/writing_sample/data"
 setwd(path)
 
+# define functions -------------------------------------------------------------
+winsor <- function(dt, var, p = 0.01) {
+  
+  q <- quantile(
+    dt[[var]],
+    probs = c(p, 1 - p),
+    na.rm = TRUE
+  )
+  
+  w_var <- paste0("w_", var)
+  
+  dt[, (w_var) := pmin(
+    pmax(get(var), q[1]),
+    q[2]
+  )]
+}
+
+make_share_diff <- function(dt, num, denom, id = "area_fips") {
+  
+  share_var <- paste0(num, "_share_", denom)
+  diff_var  <- paste0("d_", share_var)
+  
+  dt[, (share_var) := get(num) / get(denom)]
+  
+  dt[, (diff_var) :=
+       get(share_var) -
+       shift(get(share_var), 1),
+     by = id]
+  
+  winsor(dt, diff_var)
+}
+
+diff_denom_all <- function(dt, var) { 
+  make_share_diff(dt, var, "resident_emp")
+  make_share_diff(dt, var, "workplace_emp")
+  make_share_diff(dt, var, "outside_jobs")
+  make_share_diff(dt, var, "total_servc_jobs")
+  make_share_diff(dt, var, "total_goods_jobs")
+  make_share_diff(dt, var, "population")
+}
+
 ################################################################################
 # Population
 ################################################################################
@@ -58,7 +99,8 @@ lodes <- fread(
 irs <- fread(
   paste0(path, "/irs/lp_irs_migration_full.csv")
 )
-
+cols <- names(irs)[sapply(irs, is.character)]
+irs[, (cols) := lapply(.SD, as.numeric), .SDcols = cols]
 
 ################################################################################
 # Merge datasets
@@ -103,24 +145,6 @@ setorder(
   year
 )
 
-# winsorize function 
-winsor <- function(dt, var, p = 0.01) {
-  
-  q <- quantile(
-    dt[[var]],
-    probs = c(p, 1 - p),
-    na.rm = TRUE
-  )
-  
-  w_var <- paste0("w_", var)
-  
-  dt[, (w_var) := pmin(
-    pmax(get(var), q[1]),
-    q[2]
-  )]
-}
-
-
 
 ################################################################################
 # Rename fundamental employment concepts
@@ -142,10 +166,15 @@ setnames(
   "resident_emp"
 )
 
+# State FIPS for clustering
+reg[, statefip :=
+      floor(as.integer(area_fips) / 1000)]
 
 ################################################################################
 # Basic regression variables
 ################################################################################
+
+reg[, t2 := as.integer(year == 2013)]
 
 # State FIPS for clustering
 reg[, statefip :=
@@ -156,51 +185,25 @@ reg[, statefip :=
 # Net migration flows
 ################################################################################
 
-reg[, net_migration :=
-      as.integer(returns_3_inflow) -
-      as.integer(returns_3_outflow)]
+reg[, net_migration := (returns_3_inflow) - (returns_3_outflow)]
 
 # Net migration relative to employed residents
-reg[, net_migration_share_resident_emp :=
-      net_migration / resident_emp]
+diff_denom_all(reg, "net_migration")
+diff_denom_all(reg, "resident_emp")
+diff_denom_all(reg, "manufac_emp")
 
-reg[, net_migration_share_workplace_emp :=
-      net_migration / workplace_emp]
-
-reg[, net_migration_share_population :=
-      net_migration / population]
-
-reg[, net_migration_share_population_t0 :=
-      net_migration / shift(population, type = "lag", n = 1), by = .(area_fips)]
-
-# Winsorize net migration share -----------------------------------------------
-for (v in c("net_migration_share_workplace_emp",
-            "net_migration_share_resident_emp",
-            "net_migration_share_population",
-            "net_migration_share_population_t0", 
-            "IPW_US", "IPW_OTH")){
- winsor(reg, v)
-}
-
-
-# Winsorize vars ---------------------------------------------------------------
 ################################################################################
 # Employment-to-population ratios
 ################################################################################
 
 # Employment of county residents / county population
-reg[, resident_emp_population_ratio :=
-      resident_emp / population]
+make_share_diff(reg, "resident_emp", "population")
+make_share_diff(reg, "workplace_emp", "population")
+make_share_diff(reg, "workplace_emp", "resident_emp")
 
-# Employment located in county / county population
-reg[, workplace_emp_population_ratio :=
-      workplace_emp / population]
-
-winsor(reg, "resident_emp_population_ratio")
-winsor(reg, "workplace_emp_population_ratio")
 
 ################################################################################
-# Construct level shares for LP outcomes
+# Variables to difference in levels
 ################################################################################
 
 level_vars <- c(
@@ -212,62 +215,16 @@ level_vars <- c(
 level_vars <- unique(level_vars)
 
 for (i in level_vars) {
-  
-  # Resident employment
-  reg[, (paste0(i, "_share_resident_emp")) :=
-        get(i) / resident_emp]
-  
-  # Workplace employment
-  reg[, (paste0(i, "_share_workplace_emp")) :=
-        get(i) / workplace_emp]
-  
-  # Outside employment
-  reg[, (paste0(i, "_share_outside_jobs")) :=
-        get(i) / outside_jobs]
-  
-  # Resident service employment
-  reg[, (paste0(i, "_share_service_jobs")) :=
-        get(i) / total_servc_jobs]
-  
-  # Resident goods employment
-  reg[, (paste0(i, "_share_goods_jobs")) :=
-        get(i) / total_goods_jobs]
-  
-  # Population
-  reg[, (paste0(i, "_share_population")) :=
-        get(i) / population]
+  diff_denom_all(reg, i)
 }
 
+winsor(reg, "IPW_US") 
+winsor(reg, "IPW_OTH") 
 
-################################################################################
-# Winsorize level shares at 1st / 99th percentiles
-################################################################################
-
-share_vars <- grep(
-  "_share_(resident_emp|workplace_emp|outside_jobs|service_jobs|goods_jobs|population)$",
-  names(reg),
-  value = TRUE
-)
-
-for (v in share_vars) {
-  winsor(reg, v)
-}
-
-reg[, workplace_emp_share_resident_emp := workplace_emp / resident_emp]
-
-################################################################################
-# Manufacturing employment relative to resident employment
-################################################################################
-
-reg[, manuf_share_emp :=
-      manufac_emp / workplace_emp]
-
-reg[, manuf_emp_share_pop :=
-      manufac_emp / population]
-
-winsor(reg, "manuf_share_emp")
-winsor(reg, "manuf_emp_share_pop")
-
+# net migration are already flows, no need to difference. 
+winsor(reg, "net_migration_share_resident_emp")
+winsor(reg, "net_migration_share_workplace_emp")
+winsor(reg, "net_migration_share_population")
 
 
 ################################################################################

@@ -78,6 +78,7 @@ qcew[, area_fips_str := sprintf("%06d", area_fips)]
 qcew[, state := floor(area_fips / 1000)]
 
 
+
 # LODES ------------------------------------------------------------------------
 
 lodes <- fread(
@@ -118,7 +119,8 @@ reg <- merge(
   qcew,
   lodes,
   by.x = c("area_fips", "year"),
-  by.y = c("county", "year")
+  by.y = c("county", "year"), 
+  all.x = TRUE
 )
 
 nrow(reg)

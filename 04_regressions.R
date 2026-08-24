@@ -3,8 +3,8 @@
 ################################################################################
 path <- "D:/writing_sample/data"
 reg <- fread(paste0(path, "/output/transformed_reg.csv"))
-reg <- reg[year %in% c(2007, 2013), ]
-reg[, t2 := as.integer(year == 2013)]
+reg <- reg[year %in% c(2000, 2007), ]
+reg[, t2 := as.integer(year == 2007)]
 reg[, log_population := log(population)]
 reg[, log_workplace_emp := log(workplace_emp)]
 reg[, log_resident_emp := log(resident_emp)]
@@ -19,6 +19,8 @@ names_dict <- c(
   # Regressors -----------------------------------------------------------------
   
   "fit_IPW_US" =
+    "Import Exposure",
+  "w_fit_IPW_US" =
     "Import Exposure",
   
   "t2" =
@@ -517,7 +519,7 @@ map_dt <- merge(
 
 ggplot(map_dt) +
   geom_sf(
-    aes(fill = diff_workplace_resident),
+    aes(fill = w_d_workplace_emp_share_population),
     color = "grey70",
     linewidth = 0.1
   ) +
