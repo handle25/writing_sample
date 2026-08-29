@@ -152,14 +152,6 @@ setorder(
 # Rename fundamental employment concepts
 ################################################################################
 
-# QCEW:
-# Employment located at establishments in the county
-setnames(
-  reg,
-  "total_emp",
-  "workplace_emp"
-)
-
 # LODES:
 # Employed residents of the county, regardless of workplace county
 setnames(

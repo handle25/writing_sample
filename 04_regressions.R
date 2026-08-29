@@ -4,12 +4,14 @@
 path <- "D:/writing_sample/data"
 local <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
 reg <- fread(paste0(path, "/output/transformed_reg.csv"))
-reg <- reg[year %in% c(2000, 2007), ]
-reg[, t2 := as.integer(year == 2007)]
-reg[, log_population := log(population)]
-reg[, log_workplace_emp := log(workplace_emp)]
-reg[, log_resident_emp := log(resident_emp)]
-reg[, diff_workplace_resident := log_workplace_emp - log_resident_emp]
+
+reg07 <- reg[year %in% c(2000, 2007)]
+reg13 <- reg[year %in% c(2007, 2013)]
+reg25 <- reg[year %in% c(2019, 2025)]
+
+reg07[, t2 := as.integer(year == 2007)]
+reg13[, t2 := as.integer(year == 2013)]
+reg25[, t2 := as.integer(year == 2025)]
 
 ################################################################################
 # Variable labels
@@ -22,6 +24,9 @@ names_dict <- c(
   "fit_IPW_US" =
     "Import Exposure",
   "w_fit_IPW_US" =
+    "Import Exposure",
+  
+  "w_IPW_US" =
     "Import Exposure",
   
   "t2" =
@@ -158,6 +163,9 @@ names_dict <- c(
   "w_net_migration_share_resident_emp" =
     "$\\frac{Net\\ Migration}{Emp_{resident}}$",
   
+  "d_sh_empl_mfg" =
+    "$\\Delta \\frac{Manufacturing}{Employment}$",
+  
   "w_net_migration_share_workplace_emp" =
     "$\\frac{Net\\ Migration}{Emp_{workplace}}$",
   
@@ -181,6 +189,101 @@ names_dict <- c(
 ################################################################################
 # Baseline models
 ################################################################################
+baseline <- function(dep_vars, desc) {
+  mods07 <- lapply(dep_vars, function(y) {
+    
+    fml <- as.formula(
+      paste0(
+        y,
+        " ~ t2 + l_shind_manuf | ",
+        "w_IPW_US ~ w_IPW_OTH"
+      )
+    )
+    
+    feols(
+      fml,
+      data = reg07,
+      weights = ~baseline_emp,
+      cluster = ~statefip
+    )
+  })
+  
+  mods13 <- lapply(dep_vars, function(y) {
+    
+    fml <- as.formula(
+      paste0(
+        y,
+        " ~ t2 + l_shind_manuf | ",
+        "w_IPW_US ~ w_IPW_OTH"
+      )
+    )
+    
+    feols(
+      fml,
+      data = reg13,
+      weights = ~baseline_emp,
+      cluster = ~statefip
+    )
+  })
+  
+  
+  mods <- c(mods07, mods13)
+  
+  names(mods) <- c(
+    dep_vars,
+    dep_vars
+  )
+  
+  etable(
+    mods,
+    dict = names_dict,
+    drop = "Constant",
+    headers = list(
+      "2000--2007" = length(dep_vars),
+      "2007--2013" = length(dep_vars)
+    ),
+    tex = TRUE,
+    file = paste0(
+      path,
+      "/../figures/model_",
+      desc,
+      "_0826.tex"
+    ),
+    replace = TRUE
+  )
+  
+  invisible(mods)
+}
+
+baseline(
+  "d_sh_empl_mfg",
+  "d_sh_empl_mfg"
+)
+
+baseline(
+  "w_d_workplace_emp_share_population",
+  "w_d_workplace_emp_share_population"
+)
+
+
+baseline(
+  "net_migration",
+  "net_migration"
+)
+
+baseline(
+  "workplace_emp_share_population",
+  "workplace_emp_share_population"
+)
+
+baseline(
+  "resident_emp_share_population",
+  "resident_emp_share_population"
+)
+
+################################################################################
+# Baseline actual 
+################################################################################
 
 baseline <- function(dep_vars, desc) {
   
@@ -189,7 +292,7 @@ baseline <- function(dep_vars, desc) {
     fml <- as.formula(
       paste0(
         y,
-        " ~ t2 + l_shind_manuf  | ",
+        " ~ t2 + l_shind_manuf | ",
         "w_IPW_US ~ w_IPW_OTH"
       )
     )
@@ -198,7 +301,7 @@ baseline <- function(dep_vars, desc) {
       fml,
       data = reg,
       weights = ~baseline_emp,
-      cluster = ~statefip
+      cluster = ~statefip+year
     )
   })
   
@@ -213,7 +316,7 @@ baseline <- function(dep_vars, desc) {
       path,
       "/../figures/model_",
       desc,
-      "_0813.tex"
+      "_0826.tex"
     ),
     replace = TRUE
   )
@@ -259,7 +362,7 @@ quantile_models <- function(dep_vars, desc) {
       path,
       "/../figures/quantile_",
       desc,
-      "_0813.tex"
+      "_0826.tex"
     ),
     replace = TRUE
   )
@@ -287,18 +390,17 @@ reg[, quantile := cut(
 ################################################################################
 # Outside employment outcomes
 ################################################################################
-
-dep_vars <- c(
-  "w_d_outside_jobs_share_total_goods_jobs",
-  "w_d_outside_goods_jobs_share_outside_jobs",
-  "w_d_outside_goods_jobs_share_population",
-  "w_d_resident_emp_share_population"
-)
-
-baseline(
-  dep_vars,
-  "outside_jobs"
-)
+# 
+# dep_vars <- c(
+#   "w_d_outside_jobs_share_total_goods_jobs",
+#   "w_d_outside_goods_jobs_share_outside_jobs",
+#   "w_d_outside_goods_jobs_share_population",
+#   "w_d_resident_emp_share_population"
+# )
+# 
+# baseline(
+#   dep_vars,
+#   "outside_jobs")
 
 
 ################################################################################
@@ -317,10 +419,7 @@ baseline(
   "services"
 )
 
-quantile_models(
-  dep_vars,
-  "services"
-)
+
 
 
 ################################################################################
@@ -390,6 +489,7 @@ mods_testing <- baseline(
   dep_vars,
   "w_migration"
 )
+
 
 dep_vars <- c(
   

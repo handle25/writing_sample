@@ -43,6 +43,7 @@ for (i in seq_along(years_qcew)) {
 qcew_naics3 <- rbindlist(full_qcew3_list)
 
 # trade data -> naics for naics level shock ------------------------------------ 
+# years 2000, 2007, 2013 
 shock <- fread(paste0(path, "/output/Delta_M_naics3.csv"))
 
 # population weights -----------------------------------------------------------
@@ -61,7 +62,7 @@ qcew_naics3[, industry_code := as.integer(industry_code)]
 # Total employment in county
 qcew_naics3[
   ,
-  total_emp :=
+  workplace_emp :=
     sum(annual_avg_emplvl, na.rm = TRUE),
   by = .(area_fips, year)
 ]
@@ -70,7 +71,7 @@ qcew_naics3[
 qcew_naics3[
   ,
   industry_share :=
-    annual_avg_emplvl / total_emp
+    annual_avg_emplvl / workplace_emp
 ]
 
 # Overall industry concentration
@@ -215,7 +216,7 @@ qcew_outcome <- qcew_outcome[
 county_emp <- qcew_outcome |>
   fgroup_by(area_fips, year) |>
   fsummarize(
-    total_emp = fsum(annual_avg_emplvl)
+    workplace_emp = fsum(annual_avg_emplvl)
   ) |>
   data.table()
 
@@ -239,7 +240,7 @@ county_emp <- merge(
 
 county_emp[is.na(manufac_emp), manufac_emp := 0]
 
-county_emp[, sh_empl_mfg := manufac_emp / total_emp]
+county_emp[, sh_empl_mfg := manufac_emp / workplace_emp]
 
 
 # Long differences: 1995-2000 and 2000-2007
@@ -257,17 +258,18 @@ county_emp[, l_shind_manuf :=
 
 # baseline employment weight as a temporary county analogue
 county_emp[, baseline_emp :=
-             shift(total_emp),
+             shift(workplace_emp),
            by = area_fips
 ]
 
 # Regressions ------------------------------------------------------------------
 # Merge onto the two-period instrument
-
+# instrument moves the years up a period so we need to keep all county_emp 
 base <- merge(
   county_emp,
   instrument,
-  by = c("area_fips", "year")
+  by = c("area_fips", "year"), 
+  all.x = TRUE
 )
 
 # save file 

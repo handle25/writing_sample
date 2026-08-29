@@ -69,11 +69,7 @@ reg[, uniqueN(area_fips), by = manuf_quantile]
 ################################################################################
 
 base <- "w_outside_jobs_share_resident_emp"
-q99 <- quantile(reg[,resident_emp_population_ratio], .99, na.rm = TRUE)
-q01 <- quantile(reg[,resident_emp_population_ratio], .01, na.rm = TRUE)
 
-reg[resident_emp_population_ratio > q99, resident_emp_population_ratio := q99]
-reg[resident_emp_population_ratio < q01, resident_emp_population_ratio := q01]
 
 base <- "w_outside_jobs_share_resident_emp"
 

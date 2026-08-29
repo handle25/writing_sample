@@ -15,12 +15,18 @@ path <- "D:/writing_sample/data/irs"
 states <- tolower(state.abb)
 flows <- c("i", "o")
 
+library(future.apply)
+
+plan(multisession, workers = 4)
 
 ################################################################################
-# 2001-2003
+# 1995-2003
 ################################################################################
 
-for (y in 2001:2003) {
+states <- tolower(state.abb)
+flows <- c("i", "o")
+
+future_lapply(1995:2003, function(y) {
   
   dt_list <- vector(
     "list",
@@ -78,25 +84,42 @@ for (y in 2001:2003) {
       
       
       ##########################################################################
-      # Find file
+      # Exact file pattern
       ##########################################################################
+      
+      if (y < 2000) {
+        # last 2 digits first year + last digit second year
+        year_code <- paste0(
+          sprintf("%02d", y %% 100),
+          (y + 1) %% 10
+        )
+        
+      } else {
+        # last digit first year + last 2 digits second year
+        year_code <- paste0(
+          y %% 10,
+          sprintf("%02d", (y + 1) %% 100)
+        )
+      }
+      
+      suffix <- if (y %in% c(1995, 2000)) "r" else ""
+      
+      file_pattern <- paste0(
+        "^co",
+        year_code,
+        state,
+        f,
+        suffix,
+        "\\.xls$"
+      )
       
       file <- list.files(
         flow_path,
-        pattern = paste0(
-          state,
-          f,
-          "\\.xls$"
-        ),
+        pattern = file_pattern,
         full.names = TRUE,
         ignore.case = TRUE
       )
-      
-      
-      ##########################################################################
       # Check that exactly one file was found
-      ##########################################################################
-      
       if (length(file) != 1) {
         
         stop(
@@ -109,17 +132,14 @@ for (y in 2001:2003) {
             state,
             "flow",
             flow_name,
+            "\nExpected pattern:",
+            file_pattern,
             "\nDirectory:",
             flow_path
           )
         )
       }
-      
-      
-      ##########################################################################
-      # Read
-      ##########################################################################
-      
+
       dt <- read_excel(
         file,
         skip = 7,
@@ -127,13 +147,7 @@ for (y in 2001:2003) {
       ) |>
         data.table()
       
-      # Keep only relevant columns
       dt <- dt[, 1:9]
-      
-      
-      ##########################################################################
-      # Rename
-      ##########################################################################
       
       setnames(
         dt,
@@ -151,60 +165,29 @@ for (y in 2001:2003) {
         )
       )
       
-      
-      ##########################################################################
       # Keep US migration summary rows
-      ##########################################################################
-      
       dt <- dt[other_state == 97]
-      
-      
       ##########################################################################
       # Migration type
-      #
-      # 1 = same-state migration
-      # 2 = different-state migration
-      # 3 = total US migration
       ##########################################################################
       
       dt[, type := NA_integer_]
       
       dt[
-        grepl(
-          "Same St",
-          desc,
-          ignore.case = TRUE
-        ),
+        grepl("Same St", desc, ignore.case = TRUE),
         type := 1L
       ]
       
       dt[
-        grepl(
-          "Diff St",
-          desc,
-          ignore.case = TRUE
-        ),
+        grepl("Diff St", desc, ignore.case = TRUE),
         type := 2L
       ]
       
       dt[
-        grepl(
-          "Tot Mig-US$",
-          desc,
-          ignore.case = TRUE
-        ) |
-          grepl(
-            "Total Mig - US$",
-            desc,
-            ignore.case = TRUE
-          ),
+        grepl("Tot Mig-US$", desc, ignore.case = TRUE) |
+          grepl("Total Mig - US$", desc, ignore.case = TRUE),
         type := 3L
       ]
-      
-      
-      ##########################################################################
-      # Keep only summary rows
-      ##########################################################################
       
       dt <- dt[!is.na(type)]
       
@@ -223,14 +206,8 @@ for (y in 2001:2003) {
       ##########################################################################
       
       dt[, area_fips := paste0(
-        sprintf(
-          "%02d",
-          as.integer(base_state)
-        ),
-        sprintf(
-          "%03d",
-          as.integer(base_county)
-        )
+        sprintf("%02d", as.integer(base_state)),
+        sprintf("%03d", as.integer(base_county))
       )]
       
       
@@ -309,7 +286,7 @@ for (y in 2001:2003) {
     )
   )
 }
-
+)
 ################################################################################
 # 2004-2010
 ################################################################################

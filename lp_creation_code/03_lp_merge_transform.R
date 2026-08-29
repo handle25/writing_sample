@@ -1,18 +1,24 @@
 ################################################################################
 # Created 8.15.2026 
 # Author: Sophie Handley 
-# Purpose: Construct regression outcomes and merge QCEW, LODES, IRS, population
+# Purpose: Construct LP regression outcomes and merge QCEW, LODES, IRS, population
 ################################################################################
 
 
 rm(list = ls())
 
-# qcewdata 
+# Paths ------------------------------------------------------------------------
+
 local <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
-path <- "D:/writing_sample/data"
+path  <- "D:/writing_sample/data"
+
 setwd(path)
 
-# define functions -------------------------------------------------------------
+
+################################################################################
+# Functions
+################################################################################
+
 winsor <- function(dt, var, p = 0.01) {
   
   q <- quantile(
@@ -29,43 +35,44 @@ winsor <- function(dt, var, p = 0.01) {
   )]
 }
 
-make_share_diff <- function(dt, num, denom, id = "area_fips") {
+
+make_share <- function(dt, num, denom) {
   
   share_var <- paste0(num, "_share_", denom)
-  diff_var  <- paste0("d_", share_var)
   
   dt[, (share_var) := get(num) / get(denom)]
   
-  dt[, (diff_var) :=
-       get(share_var) -
-       shift(get(share_var), 1),
-     by = id]
-  
-  winsor(dt, diff_var)
+  winsor(dt, share_var)
 }
 
-diff_denom_all <- function(dt, var) { 
-  make_share_diff(dt, var, "resident_emp")
-  make_share_diff(dt, var, "workplace_emp")
-  make_share_diff(dt, var, "outside_jobs")
-  make_share_diff(dt, var, "total_servc_jobs")
-  make_share_diff(dt, var, "total_goods_jobs")
-  make_share_diff(dt, var, "population")
+
+share_denom_all <- function(dt, var) {
+  
+  make_share(dt, var, "resident_emp")
+  make_share(dt, var, "workplace_emp")
+  make_share(dt, var, "outside_jobs")
+  make_share(dt, var, "total_servc_jobs")
+  make_share(dt, var, "total_goods_jobs")
+  make_share(dt, var, "population")
+  make_share(dt, var, "population_t_1")
 }
+
 
 ################################################################################
 # Population
 ################################################################################
 
-acs <- fread(paste0(path, "/acs/population_1995_2023.csv"))
+acs <- fread(
+  paste0(path, "/acs/population_1995_2023.csv")
+)
 
-acs_1y <- 
-  fread(paste0(path, "/acs/acs_1y_2005_2024_commuting.csv"))
-# acs[, area_fips := as.integer(paste0(sprintf("%02.0f", state), sprintf("%03.0f", county)))]
+acs_1y <- fread(
+  paste0(path, "/acs/acs_1y_2005_2024_commuting.csv")
+)
 
 
 ################################################################################
-# Read datasets
+# QCEW
 ################################################################################
 
 qcew <- fread(
@@ -85,8 +92,9 @@ qcew[, area_fips_str := sprintf("%06d", area_fips)]
 qcew[, state := floor(area_fips / 1000)]
 
 
-# PAUSE INCOMPLETE 
-# LODES ------------------------------------------------------------------------
+################################################################################
+# LODES
+################################################################################
 
 lodes <- fread(
   paste0(
@@ -95,13 +103,19 @@ lodes <- fread(
   )
 )
 
-# IRS --------------------------------------------------------------------------
+
+################################################################################
+# IRS
+################################################################################
 
 irs <- fread(
   paste0(path, "/irs/lp_irs_migration_full.csv")
 )
+
 cols <- names(irs)[sapply(irs, is.character)]
+
 irs[, (cols) := lapply(.SD, as.numeric), .SDcols = cols]
+
 
 ################################################################################
 # Merge datasets
@@ -111,7 +125,7 @@ reg <- merge(
   qcew,
   lodes,
   by.x = c("area_fips", "year"),
-  by.y = c("county", "year"), 
+  by.y = c("county", "year"),
   all.x = TRUE
 )
 
@@ -134,9 +148,9 @@ reg <- merge(
 )
 
 reg <- merge(
-  reg, 
-  acs_1y, 
-  by = c("area_fips","year"), 
+  reg,
+  acs_1y,
+  by = c("area_fips", "year"),
   all.x = TRUE
 )
 
@@ -167,9 +181,6 @@ setnames(
   "resident_emp"
 )
 
-# State FIPS for clustering
-reg[, statefip :=
-      floor(as.integer(area_fips) / 1000)]
 
 ################################################################################
 # Basic regression variables
@@ -183,28 +194,58 @@ reg[, statefip :=
 
 
 ################################################################################
-# Net migration flows
+# Predetermined population
 ################################################################################
 
-reg[, net_migration := (returns_3_inflow) - (returns_3_outflow)]
+reg_t_1 <- copy(reg) 
+reg_t_1 <- reg_t_1[year == 2007, ] |> 
+  fmutate(population_t_1 = population) |> 
+  fselect(area_fips, population_t_1) 
 
-# Net migration relative to employed residents
-diff_denom_all(reg, "net_migration")
-diff_denom_all(reg, "resident_emp")
-diff_denom_all(reg, "manufac_emp")
-
-################################################################################
-# Employment-to-population ratios
-################################################################################
-
-# Employment of county residents / county population
-make_share_diff(reg, "resident_emp", "population")
-make_share_diff(reg, "workplace_emp", "population")
-make_share_diff(reg, "workplace_emp", "resident_emp")
+reg <- merge(reg, reg_t_1, 
+             by = "area_fips",
+             all.x = TRUE)
 
 
 ################################################################################
-# Variables to difference in levels
+# Net migration
+################################################################################
+reg[, resident_workplace_emp_gap := resident_emp - workplace_emp]
+reg[, l_resident_workplace_emp_gap := log(resident_workplace_emp_gap)]
+
+reg[, net_migration :=
+      returns_3_inflow - returns_3_outflow]
+
+# Standard contemporaneous denominators
+make_share(reg, "net_migration", "resident_emp")
+make_share(reg, "net_migration", "workplace_emp")
+make_share(reg, "net_migration", "population")
+
+# Preferred LP migration rate:
+# current migration flow / population immediately before period t
+make_share(reg, "net_migration", "population_t_1")
+
+
+################################################################################
+# Manufacturing employment shares
+################################################################################
+
+make_share(reg, "manufac_emp", "resident_emp")
+make_share(reg, "manufac_emp", "workplace_emp")
+make_share(reg, "manufac_emp", "population")
+
+
+################################################################################
+# Employment-to-population / resident-workplace ratios
+################################################################################
+
+make_share(reg, "resident_emp", "population")
+make_share(reg, "workplace_emp", "population")
+make_share(reg, "workplace_emp", "resident_emp")
+
+
+################################################################################
+# LODES employment composition
 ################################################################################
 
 level_vars <- c(
@@ -216,22 +257,26 @@ level_vars <- c(
 level_vars <- unique(level_vars)
 
 for (i in level_vars) {
-  diff_denom_all(reg, i)
+  share_denom_all(reg, i)
 }
 
-winsor(reg, "IPW_US") 
-winsor(reg, "IPW_OTH") 
-
-# net migration are already flows, no need to difference. 
-winsor(reg, "net_migration_share_resident_emp")
-winsor(reg, "net_migration_share_workplace_emp")
-winsor(reg, "net_migration_share_population")
-winsor(reg, "manufac_emp_share_resident_emp")
-winsor(reg, "manufac_emp_share_population")
 
 ################################################################################
-# Save
+# Winsorize shift-share variables
 ################################################################################
+
+winsor(reg, "IPW_US")
+winsor(reg, "IPW_OTH")
+winsor(reg, "IPW_US_pop")
+winsor(reg, "IPW_OTH_pop")
+winsor(reg, "resident_workplace_emp_gap")
+winsor(reg, "l_resident_workplace_emp_gap")
+
+
+################################################################################
+# Diagnostics
+################################################################################
+
 # Duplicate county-years?
 reg[, .N, by = .(area_fips, year)][N > 1]
 
@@ -243,14 +288,32 @@ reg[, .(
   max_year = max(year, na.rm = TRUE)
 )]
 
-# Missingness in variables used by the LP
+# Missingness in main variables
 reg[, .(
-  miss_mfg = sum(is.na(w_manufac_emp_share_resident_emp)),
-  miss_mfg_pop = sum(is.na(w_manufac_emp_share_population)),
-  miss_US = sum(is.na(w_IPW_US)),
-  miss_OTH = sum(is.na(w_IPW_OTH)),
-  miss_control = sum(is.na(l_shind_manuf))
+  miss_mfg =
+    sum(is.na(w_manufac_emp_share_resident_emp)),
+  
+  miss_mfg_pop =
+    sum(is.na(w_manufac_emp_share_population)),
+  
+  miss_migration =
+    sum(is.na(w_net_migration_share_population_t_1)),
+  
+  miss_US =
+    sum(is.na(w_IPW_US)),
+  
+  miss_OTH =
+    sum(is.na(w_IPW_OTH)),
+  
+  miss_control =
+    sum(is.na(l_shind_manuf))
 )]
+
+
+################################################################################
+# Save
+################################################################################
+
 fwrite(
   reg,
   paste0(

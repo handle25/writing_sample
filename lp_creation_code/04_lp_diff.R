@@ -21,10 +21,15 @@ run_lp <- function(
     reg,
     outcome,
     start_year = 2000,
-    end_year = 2013,
+    end_year = 2014,
     horizons = 0:7,
     figure = TRUE
 ) {
+  
+  reg <- copy(reg)
+  
+  # Make sure shifts are chronological
+  setorder(reg, area_fips, year)
   
   # Keep balanced panel
   reg <- reg[
@@ -35,18 +40,13 @@ run_lp <- function(
       ]
   ]
   
-  base <- outcome
-  
-  # Construct outcome used in LP
-  reg[, y_lp := get(base)]
-  
+  # Log outcome
+  reg[, y_lp := log(get(outcome))]
   # Lagged outcome controls
   reg[, l1_y := shift(y_lp, 1), by = area_fips]
   reg[, l2_y := shift(y_lp, 2), by = area_fips]
   reg[, l3_y := shift(y_lp, 3), by = area_fips]
   reg[, l4_y := shift(y_lp, 4), by = area_fips]
-  reg[, l5_y := shift(y_lp, 5), by = area_fips]
-  reg[, l6_y := shift(y_lp, 6), by = area_fips]
   
   # LP outcomes
   for (h in horizons) {
@@ -75,7 +75,7 @@ run_lp <- function(
       as.formula(
         paste0(
           var,
-          " ~ l1_y + l2_y + l3_y + l4_y | year  | ",
+          " ~ l1_y + l2_y + l3_y + l4_y  | year | ",
           "w_IPW_US ~ w_IPW_OTH"
         )
       ),
@@ -123,15 +123,14 @@ run_lp <- function(
       theme_bw()
     
     ggsave(
-      paste0(figs, "/baseline_lp_", base, ".pdf"),
+      paste0(figs, "/baseline_lp_", outcome, ".pdf"),
       p,
       height = 4,
       width = 4
     ) 
-    
+    print(p)
   }
   return(results)
-  show(p)
 }
 
 state_crosswalk <- data.table(
@@ -147,23 +146,12 @@ state_crosswalk <- data.table(
 
 
 reg <- fread(paste0(path, "/output/lp_transformed_reg.csv"))
-
-run_lp(reg, "w_l_resident_workplace_emp_gap")
-
-
-run_lp(reg, "resident_emp_share_population")
-run_lp(reg, "w_net_migration_share_resident_emp")
-
-run_lp(reg, "w_manufac_emp_share_population")
-
-
-
+reg <- reg[year < 2017,]
 reg[,test := log(resident_emp)]
 reg[, total_jobs := total_goods_jobs + total_servc_jobs + total_trade_jobs]
 # reg <- reg[year %in% c(2007:2017), ]
 # begin regressions ------------------------------------------------------------
 base_t0 <- "total_goods_jobs_share_resident_emp"
-
 # w_outside_earn3333_jobs_share_resident_emp 
 significant <- c(
   "w_outside_jobs_share_resident_emp",
@@ -197,8 +185,6 @@ dep_vars <- c(
   "w_d_outside_earn3333_jobs_share_workplace_emp"
 )
 
-run_lp(reg, "net_migration_share_population_t_1")
-
 
 # keep constant sample 
 reg <- reg[
@@ -225,8 +211,9 @@ results <- run_lp(
   "industry_hhi_nomanufac"
 )
 
-
 run_lp(reg, "w_d_outside_servc_jobs_share_resident_emp")
+run_lp(reg, "net_migration")
+run_lp(reg, "outside_jobs")
 
 # reg[, w_outside_jobs_share_resident_emp := log(w_outside_jobs_share_resident_emp)]
 results <- run_lp(
@@ -244,10 +231,10 @@ results <- run_lp(
   "industry_hhi"
 )
 
-     
+
 results_migration <- run_lp(
   reg = reg,
-  "net_migration_share_population_t_1"
+  "w_net_migration_share_population"
 )
 
 
