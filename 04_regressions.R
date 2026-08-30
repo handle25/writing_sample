@@ -267,8 +267,8 @@ baseline(
 
 
 baseline(
-  "net_migration",
-  "net_migration"
+  "net_migration_share_population",
+  "net_migration_share_population"
 )
 
 baseline(

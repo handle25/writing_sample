@@ -95,22 +95,60 @@ lodes_list <- list()
 for (s in states) {
  
     dt <- fread(
-      paste0(
-        path,
-        "/lodes/clean_lp_full/clean_lp_full_",
-        s,".csv"
-      )
-    )
+      paste0(path,"/lodes/clean_lp_full/new_clean_lp_full/clean_lp_full_",s,".csv"))
     
     lodes_list[[length(lodes_list) + 1]] <- dt
 }
 
-lodes <- rbindlist(lodes_list, fill = TRUE)
+lodes_baseline <- rbindlist(lodes_list, fill = TRUE)
 
-# sanity check
-lodes[, .N, by = .(county, year)][N > 1]
+lodes_2000 <- list()
+for (s in states) {
+  dt <- read_excel(
+    paste0(
+      path,
+      "/lodes/clean_lp_full/census_2000_commuting/2kresco_", s, ".xls"
+    ), skip = 3) |> 
+    data.table()
+  lodes_2000[[length(lodes_2000) + 1]] <- dt
+}
+lodes <- rbindlist(lodes_2000, fill = TRUE) |> clean_names()
+
+# Construct 5-digit county FIPS
+lodes[, county := as.integer(paste0(
+  sprintf("%02d", as.integer(res_state)),
+  sprintf("%03d", as.integer(res_county))
+))]
+
+lodes[, w_county := as.integer(paste0(
+  sprintf("%02d", as.integer(work_state)),
+  sprintf("%03d", as.integer(work_county))
+))]
+
+# Outside-county indicator
+lodes[, outside := fifelse(county == w_county, 0, 1)]
+
+# Outside jobs
+lodes[, outside_jobs := count * outside]
+
+# Collapse to home county
+outside <- lodes[,
+    .(total_jobs = sum(count, na.rm = TRUE),
+    outside_jobs = sum(outside_jobs, na.rm = TRUE)
+  ), by = county]
+
+outside[, outside_d_jobs := outside_jobs / total_jobs]
+outside[, year := 2000]
+outside_2001 <- copy(outside) 
+outside_2001[, year := 2001]
+
+outside <- rbind(outside, outside_2001)
+lodes <- rbind(lodes_baseline, outside, fill = TRUE)
 
 fwrite(
   lodes,
-  paste0(path, "/output/lp_lodes_collapsed_all_no_crosswalk.csv")
+  paste0(path, "/output/lp_new_lodes_collapsed_all_no_crosswalk.csv")
 )
+
+
+

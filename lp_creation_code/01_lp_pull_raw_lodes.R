@@ -29,8 +29,8 @@ library(lehdr)
 ################################################################################
 
 path <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data/lodes"
-
-output_dir <- paste0(path, "/clean_lp_full")
+path <- "D:/writing_sample/data/lodes/clean_lp_full"
+output_dir <- paste0(path, "/new_clean_lp_full")
 
 dir.create(
   output_dir,
@@ -45,10 +45,8 @@ dir.create(
 states <- tolower(state.abb)
 
 # Run California and Texas separately
-states <- states[!states %in% c("ca", "tx")]
-states <- states[grep("tn", states):length(states)]
-states <- c("ca", "tx")
-years <- 2003:2023
+
+years <- 2002:2025
 
 ################################################################################
 # Pull and collapse
@@ -56,70 +54,15 @@ years <- 2003:2023
 
 for (s in states) {
   
-  print(
-    paste(
-      "Starting state:",
-      s
-    )
-  )
+  print(paste("Starting state:",s))
   
-  ##############################################################################
-  # File for completed state panel
-  ##############################################################################
-  
-  state_output_file <- paste0(
-    output_dir,
-    "/clean_lp_full_",
-    s,
-    ".csv"
-  )
-  
-  ##############################################################################
-  # Skip state if already completely processed
-  ##############################################################################
-  
-  if (file.exists(state_output_file)) {
-    
-    print(
-      paste(
-        "State already completed:",
-        s
-      )
-    )
-    
-    next
-  }
-  
-  ##############################################################################
-  # List to hold successful years for this state
-  ##############################################################################
-  
-  state_list <- vector(
-    "list",
-    length(years)
-  )
-  
+  state_output_file <- paste0(output_dir,"/clean_lp_full_",s,".csv")
+  state_list <- vector("list",length(years))
   k <- 1
   
-  ##############################################################################
-  # Loop through years
-  ##############################################################################
-  
   for (y in years) {
-    
-    print(
-      paste(
-        "Starting:",
-        s,
-        y
-      )
-    )
-    
+    print(paste("Starting:",s,y))
     year_result <- tryCatch({
-      
-      ##########################################################################
-      # Pull exact requested year
-      ##########################################################################
       
       lodes <- grab_lodes(
         state = s,
@@ -133,106 +76,31 @@ for (s in states) {
       
       lodes[, year := y]
       
-      ##########################################################################
-      # County FIPS directly from block GEOID
-      ##########################################################################
+      lodes[, county := as.integer(substr(as.character(h_geocode), 1, 5))]
+      lodes[, w_county := as.integer(substr(as.character(w_geocode), 1, 5))]
       
-      lodes[
-        ,
-        county := as.integer(
-          substr(
-            as.character(h_geocode),
-            1,
-            5
-          )
-        )
-      ]
-      
-      lodes[
-        ,
-        w_county := as.integer(
-          substr(
-            as.character(w_geocode),
-            1,
-            5
-          )
-        )
-      ]
-      
-      ##########################################################################
       # Outside-county indicator
-      ##########################################################################
       
-      lodes[
-        ,
-        outside := fifelse(
-          county == w_county,
-          0,
-          1
-        )
-      ]
-      
-      ##########################################################################
-      # Outside-county jobs
-      ##########################################################################
-      
+      lodes[, outside := fifelse(county == w_county, 0, 1)]
       # Overall
-      lodes[
-        ,
-        outside_jobs := S000 * outside
-      ]
+      lodes[, outside_jobs := S000 * outside]
       
       # Industry groups
-      lodes[
-        ,
-        outside_goods_jobs := SI01 * outside
-      ]
-      
-      lodes[
-        ,
-        outside_trade_jobs := SI02 * outside
-      ]
-      
-      lodes[
-        ,
-        outside_servc_jobs := SI03 * outside
-      ]
+      lodes[, outside_goods_jobs := SI01 * outside]
+      lodes[, outside_trade_jobs := SI02 * outside]
+      lodes[, outside_servc_jobs := SI03 * outside]
       
       # Age groups
-      lodes[
-        ,
-        outside_age29_jobs := SA01 * outside
-      ]
-      
-      lodes[
-        ,
-        outside_age30_54_jobs := SA02 * outside
-      ]
-      
-      lodes[
-        ,
-        outside_age55_jobs := SA03 * outside
-      ]
+      lodes[, outside_age29_jobs := SA01 * outside]
+      lodes[, outside_age30_54_jobs := SA02 * outside]
+      lodes[, outside_age55_jobs := SA03 * outside]
       
       # Earnings groups
-      lodes[
-        ,
-        outside_earn1250_jobs := SE01 * outside
-      ]
+      lodes[, outside_earn1250_jobs := SE01 * outside]
+      lodes[, outside_earn1251_3333_jobs := SE02 * outside]
+      lodes[, outside_earn3333_jobs := SE03 * outside]
       
-      lodes[
-        ,
-        outside_earn1251_3333_jobs := SE02 * outside
-      ]
-      
-      lodes[
-        ,
-        outside_earn3333_jobs := SE03 * outside
-      ]
-      
-      ##########################################################################
       # Collapse to home county x year
-      ##########################################################################
       
       outside <- lodes |>
         fgroup_by(county, year) |>
@@ -276,80 +144,24 @@ for (s in states) {
         ) |>
         data.table()
       
-      ##########################################################################
-      # Shares working outside county
-      ##########################################################################
-      
       # Overall
-      outside[
-        ,
-        outside_d_jobs :=
-          outside_jobs / total_jobs
-      ]
+      outside[, outside_d_jobs := outside_jobs / total_jobs]
       
       # Industry
-      outside[
-        ,
-        outside_d_goods_jobs :=
-          outside_goods_jobs / total_goods_jobs
-      ]
-      
-      outside[
-        ,
-        outside_d_trade_jobs :=
-          outside_trade_jobs / total_trade_jobs
-      ]
-      
-      outside[
-        ,
-        outside_d_servc_jobs :=
-          outside_servc_jobs / total_servc_jobs
-      ]
+      outside[, outside_d_goods_jobs := outside_goods_jobs / total_goods_jobs]
+      outside[, outside_d_trade_jobs := outside_trade_jobs / total_trade_jobs]
+      outside[, outside_d_servc_jobs := outside_servc_jobs / total_servc_jobs]
       
       # Age
-      outside[
-        ,
-        outside_d_age29_jobs :=
-          outside_age29_jobs / total_age29_jobs
-      ]
-      
-      outside[
-        ,
-        outside_d_age30_54_jobs :=
-          outside_age30_54_jobs / total_age30_54_jobs
-      ]
-      
-      outside[
-        ,
-        outside_d_age55_jobs :=
-          outside_age55_jobs / total_age55_jobs
-      ]
+      outside[, outside_d_age29_jobs := outside_age29_jobs / total_age29_jobs]
+      outside[, outside_d_age30_54_jobs := outside_age30_54_jobs / total_age30_54_jobs]
+      outside[, outside_d_age55_jobs := outside_age55_jobs / total_age55_jobs]
       
       # Earnings
-      outside[
-        ,
-        outside_d_earn1250_jobs :=
-          outside_earn1250_jobs / total_earn1250_jobs
-      ]
-      
-      outside[
-        ,
-        outside_d_earn1251_3333_jobs :=
-          outside_earn1251_3333_jobs /
-          total_earn1251_3333_jobs
-      ]
-      
-      outside[
-        ,
-        outside_d_earn3333_jobs :=
-          outside_earn3333_jobs /
-          total_earn3333_jobs
-      ]
-      
-      ##########################################################################
-      # Source state
-      ##########################################################################
-      
+      outside[, outside_d_earn1250_jobs := outside_earn1250_jobs / total_earn1250_jobs]
+      outside[, outside_d_earn1251_3333_jobs := outside_earn1251_3333_jobs / total_earn1251_3333_jobs]
+      outside[, outside_d_earn3333_jobs := outside_earn3333_jobs / total_earn3333_jobs]
+     
       outside[, state_str := s]
       
       ##########################################################################
@@ -360,53 +172,28 @@ for (s in states) {
       
       gc()
       
-      ##########################################################################
-      # Return collapsed year
-      ##########################################################################
-      
       outside
       
     }, error = function(e) {
       
-      print(
-        paste(
-          "ERROR - skipping:",
-          s,
-          y,
-          "|",
-          conditionMessage(e)
-        )
-      )
+      print(paste("ERROR - skipping:",s,y,"|", conditionMessage(e)))
       
       gc()
       
       NULL
     })
     
-    ############################################################################
-    # Add successful year to state list
-    ############################################################################
-    
+  
     if (!is.null(year_result)) {
       
       state_list[[k]] <- year_result
       
       k <- k + 1
       
-      print(
-        paste(
-          "Finished:",
-          s,
-          y
-        )
-      )
+      print(paste("Finished:",s,s))
     }
   }
-  
-  ##############################################################################
-  # Remove unused list entries
-  ##############################################################################
-  
+ 
   state_list <- state_list[
     !vapply(
       state_list,
@@ -414,10 +201,6 @@ for (s in states) {
       logical(1)
     )
   ]
-  
-  ##############################################################################
-  # Combine all successful years for this state
-  ##############################################################################
   
   if (length(state_list) > 0) {
     
@@ -427,83 +210,21 @@ for (s in states) {
       fill = TRUE
     )
     
-    ##########################################################################
-    # Check state-year-county uniqueness
-    ##########################################################################
-    
-    dupes <- lodes_state[
-      ,
-      .N,
-      by = .(
-        county,
-        year
-      )
-    ][N > 1]
-    
-    if (nrow(dupes) > 0) {
-      
-      print(
-        paste(
-          "WARNING: duplicates found for",
-          s
-        )
-      )
-      
-      print(dupes)
-    }
-    
-    ##########################################################################
-    # Show years successfully obtained
-    ##########################################################################
-    
-    print(
-      paste(
-        "Years successfully pulled for",
-        s,
-        ":",
-        paste(
-          sort(unique(lodes_state$year)),
-          collapse = ", "
-        )
-      )
-    )
-    
-    ##########################################################################
-    # Save full state panel
-    ##########################################################################
+    print(paste("Years successfully pulled for",s,":",
+        paste(sort(unique(lodes_state$year)),collapse = ", ")))
     
     fwrite(
       lodes_state,
       state_output_file
     )
     
-    print(
-      paste(
-        "Saved state panel:",
-        s
-      )
-    )
-    
-    ##########################################################################
-    # Clear state from memory
-    ##########################################################################
-    
-    rm(
-      lodes_state,
-      state_list
-    )
+    print(paste("Saved state panel:",s))
+    rm(lodes_state,state_list)
     
     gc()
     
   } else {
-    
-    print(
-      paste(
-        "No usable years found for:",
-        s
-      )
-    )
-    
+    print(paste("No usable years found for:",s))
     rm(state_list)
     
     gc()
@@ -515,3 +236,38 @@ for (s in states) {
 ################################################################################
 
 print("LODES state-level annual pull complete.")
+
+# get 2000 
+
+base_url <- paste0(
+  "https://www2.census.gov/programs-surveys/decennial/",
+  "tables/2000/county-to-county-worker-flow-files/"
+)
+
+states <- tolower(c(state.abb, "dc"))
+
+dir.create(
+  paste0(path, "/census_2000_commuting"),
+  showWarnings = FALSE
+)
+
+for (st in states) {
+  
+  url <- paste0(
+    base_url,
+    "2kresco_", st, ".xls"
+  )
+  
+  dest <- paste0(
+    path,
+    "/census_2000_commuting/2kresco_", st, ".xls"
+  )
+  
+  try(
+    download.file(
+      url,
+      destfile = dest,
+      mode = "wb"
+    )
+  )
+}
