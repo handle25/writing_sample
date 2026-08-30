@@ -26,7 +26,7 @@ plan(multisession, workers = 4)
 states <- tolower(state.abb)
 flows <- c("i", "o")
 
-future_lapply(1995:2003, function(y) {
+future_lapply(2003:2003, function(y) {
   
   dt_list <- vector(
     "list",
@@ -87,15 +87,19 @@ future_lapply(1995:2003, function(y) {
       # Exact file pattern
       ##########################################################################
       
-      if (y < 2000) {
-        # last 2 digits first year + last digit second year
+      if (y == 2003) {
+        
+        year_code <- "0304"
+        
+      } else if (y < 2000) {
+        
         year_code <- paste0(
           sprintf("%02d", y %% 100),
           (y + 1) %% 10
         )
         
       } else {
-        # last digit first year + last 2 digits second year
+        
         year_code <- paste0(
           y %% 10,
           sprintf("%02d", (y + 1) %% 100)
@@ -546,7 +550,7 @@ for (y in 4:10) {
 
 flows <- c("inflow", "outflow")
 
-for (y in 2011:2017) {
+for (y in 2017:2021) {
   
   y_0 <- sprintf("%02d", y %% 100)
   y_1 <- sprintf("%02d", (y + 1) %% 100)

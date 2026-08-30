@@ -54,7 +54,8 @@ share_denom_all <- function(dt, var) {
   make_share(dt, var, "total_servc_jobs")
   make_share(dt, var, "total_goods_jobs")
   make_share(dt, var, "population")
-  make_share(dt, var, "population_t_1")
+  make_share(dt, var, "population_2000")
+  make_share(dt, var, "population_2007")
 }
 
 
@@ -99,7 +100,7 @@ qcew[, state := floor(area_fips / 1000)]
 lodes <- fread(
   paste0(
     path,
-    "/output/lp_lodes_collapsed_all_no_crosswalk.csv"
+    "/output/lp_new_lodes_collapsed_all_no_crosswalk.csv"
   )
 )
 
@@ -198,9 +199,18 @@ reg[, statefip :=
 ################################################################################
 
 reg_t_1 <- copy(reg) 
+reg_t_1 <- reg_t_1[year == 2000, ] |> 
+  fmutate(population_2000 = population) |> 
+  fselect(area_fips, population_2000) 
+
+reg <- merge(reg, reg_t_1, 
+             by = "area_fips",
+             all.x = TRUE)
+
+reg_t_1 <- copy(reg) 
 reg_t_1 <- reg_t_1[year == 2007, ] |> 
-  fmutate(population_t_1 = population) |> 
-  fselect(area_fips, population_t_1) 
+  fmutate(population_2007 = population) |> 
+  fselect(area_fips, population_2007) 
 
 reg <- merge(reg, reg_t_1, 
              by = "area_fips",
@@ -214,16 +224,29 @@ reg[, resident_workplace_emp_gap := resident_emp - workplace_emp]
 reg[, l_resident_workplace_emp_gap := log(resident_workplace_emp_gap)]
 
 reg[, net_migration :=
-      returns_3_inflow - returns_3_outflow]
+      exemptions_3_inflow - exemptions_3_outflow]
+
+reg[, net_migration_samestate :=
+      exemptions_1_inflow - exemptions_1_outflow]
+
+reg[, net_migration_diffstate :=
+      exemptions_2_inflow - exemptions_2_outflow]
 
 # Standard contemporaneous denominators
 make_share(reg, "net_migration", "resident_emp")
 make_share(reg, "net_migration", "workplace_emp")
 make_share(reg, "net_migration", "population")
+make_share(reg, "net_migration_samestate", "population")
+make_share(reg, "net_migration_diffstate", "population")
 
 # Preferred LP migration rate:
 # current migration flow / population immediately before period t
-make_share(reg, "net_migration", "population_t_1")
+make_share(reg, "net_migration", "population_2007")
+make_share(reg, "net_migration", "population_2000")
+make_share(reg, "net_migration_samestate", "population_2000")
+make_share(reg, "net_migration_samestate", "population_2007")
+make_share(reg, "net_migration_diffstate", "population_2000")
+make_share(reg, "net_migration_diffstate", "population_2007")
 
 
 ################################################################################
@@ -233,6 +256,7 @@ make_share(reg, "net_migration", "population_t_1")
 make_share(reg, "manufac_emp", "resident_emp")
 make_share(reg, "manufac_emp", "workplace_emp")
 make_share(reg, "manufac_emp", "population")
+make_share(reg, "manufac_emp", "population_2000")
 
 
 ################################################################################
@@ -295,10 +319,7 @@ reg[, .(
   
   miss_mfg_pop =
     sum(is.na(w_manufac_emp_share_population)),
-  
-  miss_migration =
-    sum(is.na(w_net_migration_share_population_t_1)),
-  
+
   miss_US =
     sum(is.na(w_IPW_US)),
   

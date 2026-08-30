@@ -21,12 +21,13 @@ run_lp <- function(
     reg,
     outcome,
     start_year = 2000,
-    end_year = 2013,
+    end_year = 2007,
     horizons = 0:7,
     figure = TRUE
 ) {
   
   # Keep balanced panel
+  reg <- reg[!is.na(get(outcome)) & year <= end_year + horizons[length(horizons)]]
   reg <- reg[
     area_fips %in%
       reg[, .N, by = area_fips][
@@ -34,6 +35,8 @@ run_lp <- function(
         area_fips
       ]
   ]
+  
+  setorder(reg, area_fips, year)
   
   base <- outcome
   
@@ -47,6 +50,13 @@ run_lp <- function(
   reg[, l4_y := shift(y_lp, 4), by = area_fips]
   reg[, l5_y := shift(y_lp, 5), by = area_fips]
   reg[, l6_y := shift(y_lp, 6), by = area_fips]
+  
+  
+  reg[, l1_US  := shift(w_IPW_US,  1), by = area_fips]
+  reg[, l2_US  := shift(w_IPW_US,  2), by = area_fips]
+  
+  reg[, l1_OTH := shift(w_IPW_OTH, 1), by = area_fips]
+  reg[, l2_OTH := shift(w_IPW_OTH, 2), by = area_fips]
   
   # LP outcomes
   for (h in horizons) {
@@ -75,12 +85,13 @@ run_lp <- function(
       as.formula(
         paste0(
           var,
-          " ~ l1_y + l2_y + l3_y + l4_y | year  | ",
-          "w_IPW_US ~ w_IPW_OTH"
+          " ~ l1_y | area_fips + year | ",
+          "w_IPW_US ~ ",
+          "w_IPW_OTH "
         )
       ),
       data = reg[year %in% start_year:end_year],
-      cluster = ~area_fips + year
+      cluster = ~area_fips
     )
     
     print(summary(mod))
@@ -148,11 +159,37 @@ state_crosswalk <- data.table(
 
 reg <- fread(paste0(path, "/output/lp_transformed_reg.csv"))
 
-run_lp(reg, "w_l_resident_workplace_emp_gap")
+run_lp(reg, "w_net_migration_share_population_2000", 
+       start_year = 2000, 
+       end_year = 2007)
+run_lp(reg, "w_net_migration_share_population_2007", 
+       start_year = 2007, 
+       end_year = 2015)
+
+run_lp(reg, "w_net_migration_share_population", 
+       start_year = 2000, 
+       end_year = 2007)
+run_lp(reg, "w_net_migration_share_population", 
+       start_year = 2007, 
+       end_year = 2015)
+
+run_lp(reg, "w_outside_jobs_share_population_2000", start_year = 2005, 
+       end_year = 2015)
+
+reg[, d_outside_jobs_share_population := 
+      outside_jobs_share_population - shift(
+        outside_jobs_share_population, type = "lag", n = 1
+      ), by = .(area_fips)]
+
+ggplot(data = reg[year == 2007], aes(
+  x = d_outside_jobs_share_population, 
+  y = w_IPW_US
+))+ 
+  geom_point()
 
 
 run_lp(reg, "resident_emp_share_population")
-run_lp(reg, "w_net_migration_share_resident_emp")
+run_lp(reg, "w_net_migration_share_population_t_1")
 
 run_lp(reg, "w_manufac_emp_share_population")
 
