@@ -152,8 +152,9 @@ lodes[, d_outside_jobs_share_population_t_1 :=
 
 winsor(lodes, "d_outside_jobs_share_population_t_1")
 
-lodes[, population := NULL]
 
+lodes[, population_2000 := NULL]
+lodes[, population := NULL]
 # IRS --------------------------------------------------------------------------
 
 irs <- fread(
@@ -165,13 +166,27 @@ cols <- setdiff(names(irs), c("area_fips", "year"))
 irs[, (cols) := lapply(.SD, as.numeric), .SDcols = cols]
 
 irs[year %in% c(1990:1995), new_year := 1995]
-irs[year %in% c(1995:2000), new_year := 2000]
+irs[year %in% c(1996:2000), new_year := 2000]
 irs[year %in% c(2001:2006), new_year := 2007]
 irs[year %in% c(2007:2012), new_year := 2013]
+
+irs[year %in% c(1990:1995), base_year := 1990]
+irs[year %in% c(1996:2000), base_year := 1995]
+irs[year %in% c(2001:2006), base_year := 2000]
+irs[year %in% c(2007:2012), base_year := 2007]
+
 irs[, year := new_year]
-irs <- irs |> fgroup_by(year, area_fips) |> 
+irs <- irs |> fgroup_by(new_year, base_year, year, area_fips) |> 
   fsum()
 
+irs <- merge(irs, acs, 
+             by.x = c("area_fips","base_year"), 
+             by.y = c("area_fips", "year"), 
+             all.x = T)
+
+# get base period population 
+setnames(irs, "population", "population_base_year") 
+irs[,population_2000 := NULL]
 
 ################################################################################
 # Merge datasets
@@ -233,16 +248,17 @@ reg[, statefip :=
 ################################################################################
 
 reg[, net_migration := (returns_3_inflow) - (returns_3_outflow)]
+
 reg[,lfp := labor_force / population*100]
 make_share_diff(reg, "labor_force", "population")
 make_share_diff(reg, "labor_force", "workplace_emp")
 make_share_diff(reg, "unemployed", "labor_force")
-reg <- make_base_year(reg, "population")
 
 reg[,unemp_check := unemployed / labor_force*100 ]
 
 # Net migration relative to employed residents
 diff_denom_all(reg, "net_migration")
+make_share_diff(reg, "net_migration", "population_base_year")
 diff_denom_all(reg, "resident_emp")
 
 ################################################################################
@@ -281,6 +297,9 @@ winsor(reg, "net_migration_share_resident_emp")
 winsor(reg, "net_migration_share_workplace_emp")
 winsor(reg, "net_migration_share_population")
 winsor(reg, "net_migration_share_population_2000")
+reg[,net_migration_share_population_2000_t := net_migration / population_2000]
+winsor(reg, "net_migration_share_population_base_year")
+
 ################################################################################
 # Save
 ################################################################################

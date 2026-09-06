@@ -193,7 +193,10 @@ names_dict <- c(
     "$\\Delta \\frac{Unemployed}{Labor\\ Force}$",
   
   "w_net_migration_share_population_2000"= 
-    "$ \\frac{Net Migration}{Population_{2000}}$"
+    "$ \\frac{Net\\ Migration}{Population_{2000}}$",
+  
+  "w_net_migration_share_population_base_year"= 
+    "$ \\frac{Net\\ Migration}{Population_{t0}}$"
   
 )
 
@@ -303,6 +306,10 @@ baseline(
 baseline(
   "w_net_migration_share_population_2000",
   "w_net_migration_share_population_2000"
+)
+baseline(
+  "w_net_migration_share_population_base_year",
+  "w_net_migration_share_population_base_year"
 )
 
   
