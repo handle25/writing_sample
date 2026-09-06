@@ -26,6 +26,8 @@ names_dict <- c(
     "Import Exposure",
   "w_fit_IPW_US" =
     "Import Exposure",
+  "w_IPW_US_10yr" =
+    "Import Exposure",
   
   "w_IPW_US" =
     "Import Exposure",
@@ -196,7 +198,9 @@ names_dict <- c(
     "$ \\frac{Net\\ Migration}{Population_{2000}}$",
   
   "w_net_migration_share_population_base_year"= 
-    "$ \\frac{Net\\ Migration}{Population_{t0}}$"
+    "$ \\frac{Net\\ Migration}{Population_{t0}}$",
+  "w_d_outside_jobs_share_population_t_1"= 
+    "$\\Delta \\frac{Outside\\ Jobs}{Population_{t0}}$"
   
 )
 
@@ -225,6 +229,8 @@ baseline <- function(
     
     # Baseline level of outcome
     reg_temp[, l_y := shift(get(base_y)), by = area_fips]
+    # reg_temp[, l_y := shift(outside_jobs_share_population), by = area_fips]
+    
     
     reg_temp[, t2 := as.integer(year == 2007)]
     
@@ -251,6 +257,8 @@ baseline <- function(
     base_y <- sub("^d_", "", base_y)
     
     reg_temp[, l_y := shift(get(base_y)), by = area_fips]
+    # this is for outside jobs lag 
+    # reg_temp[, l_y := shift(outside_jobs_share_population), by = area_fips]
     
     reg_temp[, t2 := as.integer(year == 2013)]
     
@@ -312,6 +320,11 @@ baseline(
   "w_net_migration_share_population_base_year"
 )
 
+baseline(
+  "w_net_migration_share_population_base_year",
+  "w_net_migration_share_population_base_year"
+)
+
   
 baseline(
   "w_d_labor_force_share_population_2000",
@@ -324,6 +337,7 @@ baseline(
   shock_us = "w_IPW_US_10yr",
   shock_oth = "w_IPW_OTH_10yr"
 )
+
 
 baseline(
   "w_d_outside_jobs_share_population_t_1",
