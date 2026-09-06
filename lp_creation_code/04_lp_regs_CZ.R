@@ -215,3 +215,65 @@ results_migration <- run_lp(
 
 reg[, mean_travel_time_to_work_minutes := log(mean_travel_time_to_work_minutes)]
 
+cz_geo <- readRDS(
+  paste0(path, "/output/cz_map.rds")
+)
+
+
+plot_reg <- copy(reg)
+
+q <- quantile(reg[,d_sh_empl_mfg], probs = c(.05, .95), na.rm = T)
+reg[,w_d_sh_empl_mfg := d_sh_empl_mfg]
+reg[w_d_sh_empl_mfg < q[1], w_d_sh_empl_mfg := q[1]]
+reg[w_d_sh_empl_mfg > q[2], w_d_sh_empl_mfg := q[2]]
+
+
+for (y in c(2000, 2007, 2013)){
+  map_dt <- merge(
+    cz_geo,
+    plot_reg,
+    by = "commuting_zone_id_2000",
+    all.x = TRUE
+  ) |> 
+    filter(year == y )
+  
+  plot <- ggplot(map_dt) +
+    geom_sf(
+      aes(fill = w_d_sh_empl_mfg),
+      color = "grey70",
+      linewidth = 0.1
+    ) +
+    coord_sf(
+      xlim = c(-90, -80),
+      ylim = c(34, 50)
+    ) +
+    scale_fill_gradient2(
+      low = "red",
+      high = "blue",
+      midpoint = 0
+    ) +
+    theme_void() 
+  
+  plot_full <- ggplot(map_dt) +
+    geom_sf(
+      aes(fill = w_d_sh_empl_mfg),
+      color = "grey70",
+      linewidth = 0.1
+    ) +
+    coord_sf(
+      xlim = c(-120, -60),
+      ylim = c(24, 50)
+    ) +
+    scale_fill_gradient2(
+      low = "red",
+      high = "blue",
+      midpoint = 0
+    ) +
+    theme_void() 
+  
+  assign(paste0("plot", y), plot)
+  assign(paste0("plot_full", y), plot_full)
+}
+
+plot2007
+ggsave(paste0(path,"/../figures/w_d_sh_empl_mfg_2006_2007_CZ",".pdf"))

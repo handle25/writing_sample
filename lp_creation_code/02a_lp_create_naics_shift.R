@@ -21,19 +21,64 @@ cw <- read_stata(
   data.table()
 
 cw <- cw |>
-  fselect(hs10, naics_str, m_val)
+  fmutate(import_value = m_val) |>
+  fselect(hs10, naics_str, import_value) |>
+  fgroup_by(hs10, naics_str) |> 
+  fsummarize(import_value = fsum(import_value))
+
+# collapse to one hs10 naics level. This is 1:1 
+cw <- unique(cw, by = c("hs10", "naics_str", "import_value"))
 
 # Restore HS10 to exactly 10 digits
 cw[, hs10 := sprintf("%010.0f", hs10)]
 
 # Create HS6 correctly
 cw[, hs6 := substr(hs10, 1, 6)]
+cw[, hs6 := as.integer(hs6)]
 
-# One NAICS mapping per HS6
-cw <- cw |>
-  fgroup_by(hs6) |>
-  fsummarize(naics = flast(naics_str)) |>
-  data.table()
+cw[,.N, by = c("hs6")]
+
+# collapse to HS6 
+setorder(cw, hs6, -import_value)
+cw <- cw[, .SD[1], by = .(hs6)]
+
+#justify appending them together ###############################################
+test <- merge(cw_1to1, cw, 
+              by="hs6", 
+              all = T )
+
+test[, match := as.numeric(naics == naics_str)]
+test <- test |> fgroup_by(year) |> 
+  fsummarize(match_rate = 100*fmean(match, na.rm = TRUE))
+# Remove NA year created by unmatched Fajgelbaum observations
+test <- test[!is.na(year)]
+
+# Round for presentation
+test[, match_rate := round(match_rate, 1)]
+test <- test[year %in% c(1991, 1995, 2000, 2005, 2010:2017)]
+# Nice column names
+setnames(
+  test,
+  c("year", "match_rate"),
+  c("Year", "Match Rate (\\%)")
+)
+tab <- xtable(
+  test,
+  caption = "Agreement Between HS6--NAICS Crosswalks",
+  label = "tab:crosswalk_match",
+  align = c("l", "c", "c")
+)
+
+print(
+  tab,
+  include.rownames = FALSE,
+  booktabs = TRUE,
+  floating  = FALSE,
+  sanitize.colnames.function = identity,
+  caption.placement = "top",
+  file = paste0(path, "/../tables/crosswalk_match.tex")
+)
+################################################################################
 
 # Repeat fixed crosswalk for 2018-2026
 cw_new <- rbindlist(
@@ -53,16 +98,6 @@ cw_1to1 <- rbind(
 )
 
 setorder(cw_1to1, year, hs6)
-
-# 95 % agreement in hs6 -> naics after 2011 
-# test <- cw |> fgroup_by(hs6) |> 
-#   fsummarize(naics_new = as.character(flast(naics)))
-# test[,hs6 := as.integer(hs6)]
-# test <- merge(cw_1to1, 
-#               test, 
-#               by = "hs6")
-# test[, same := naics == naics_new]
-# mean(test[year > 2013,same])
 
 # Bring in trade data at hs6 level, merge to naics6 ---------------------------- 
 years <- c(1995:2025)

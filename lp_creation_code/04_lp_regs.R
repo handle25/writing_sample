@@ -12,9 +12,14 @@ figure_3 <- T
 figure_4 <- T
 
 # qcewdata 
+
+date <- Sys.Date()
 path <- "D:/writing_sample/data"
 figs <- "D:/writing_sample/figures"
 local <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
+
+reg <- fread(paste0(path, "/output/lp_transformed_reg.csv"))
+
 setwd(path)
 # function definition ----------------------------------------------------------
 run_lp <- function(
@@ -85,7 +90,7 @@ run_lp <- function(
       as.formula(
         paste0(
           var,
-          " ~ l1_y | area_fips + year | ",
+          " ~ l1_y + l2_y | area_fips + year | ",
           "w_IPW_US ~ ",
           "w_IPW_OTH "
         )
@@ -134,7 +139,7 @@ run_lp <- function(
       theme_bw()
     
     ggsave(
-      paste0(figs, "/baseline_lp_", base, ".pdf"),
+      paste0(figs, "/baseline_lp_", base, date, ".pdf"),
       p,
       height = 4,
       width = 4
@@ -156,25 +161,52 @@ state_crosswalk <- data.table(
   division = state.division
 )
 
+reg[,resident_workplace_emp_gap_share_population := resident_workplace_emp_gap/workplace_emp]
+quants <- quantile(reg[,resident_workplace_emp_gap_share_population], probs = c(.01,.99), na.rm = T)
+reg[resident_workplace_emp_gap_share_population>=quants[2], 
+    resident_workplace_emp_gap_share_population := quants[2]]
+reg[resident_workplace_emp_gap_share_population<=quants[1], 
+    resident_workplace_emp_gap_share_population := quants[1]]
 
-reg <- fread(paste0(path, "/output/lp_transformed_reg.csv"))
+run_lp(reg, "resident_workplace_emp_gap_share_population", 
+       start_year = 2000, 
+       end_year = 2007)
+
+reg[,l_workplace_emp := log(workplace_emp)]
+run_lp(reg, "l_workplace_emp", 
+       start_year = 2000, 
+       end_year = 2007)
+
 
 run_lp(reg, "w_net_migration_share_population_2000", 
        start_year = 2000, 
        end_year = 2007)
+
 run_lp(reg, "w_net_migration_share_population_2007", 
        start_year = 2007, 
        end_year = 2015)
 
-run_lp(reg, "w_net_migration_share_population", 
+run_lp(reg, "w_net_migration_share_population_2000", 
        start_year = 2000, 
        end_year = 2007)
+
+run_lp(reg, "w_outside_jobs_share_population_2000", start_year = 2002, 
+       end_year = 2007)
+
+
 run_lp(reg, "w_net_migration_share_population", 
        start_year = 2007, 
        end_year = 2015)
 
-run_lp(reg, "w_outside_jobs_share_population_2000", start_year = 2005, 
-       end_year = 2015)
+run_lp(reg, "w_outside_jobs_share_population", start_year = 2002, 
+       end_year = 2007)
+
+run_lp(reg, "w_outside_jobs_share_population", start_year = 2002, 
+       end_year = 2007)
+
+
+run_lp(reg, "w_outside_jobs_share_population", start_year = 2007, 
+       end_year = 2012)
 
 reg[, d_outside_jobs_share_population := 
       outside_jobs_share_population - shift(
@@ -192,6 +224,9 @@ run_lp(reg, "resident_emp_share_population")
 run_lp(reg, "w_net_migration_share_population_t_1")
 
 run_lp(reg, "w_manufac_emp_share_population")
+
+run_lp(reg, "sh_empl_mfg")
+
 
 
 

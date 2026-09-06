@@ -18,6 +18,7 @@
 
 rm(list = ls())
 
+
 path <- "D:/writing_sample/data"
 
 states <- tolower(state.abb)
@@ -31,11 +32,45 @@ dir.create(
   paste0(path, "/clean_no_crosswalk"),
   showWarnings = FALSE
 )
+# Pull and collapse ------------------------------------------------------------
+## 1990 ------------------------------------------------------------------------
+options(timeout = 600)
+url <- "https://www2.census.gov/programs-surveys/commuting/datasets/1990/worker-flow/usresco.txt"
 
-################################################################################
-# Pull and collapse
-################################################################################
+usa_1990 <- read.fwf(
+  url,
+  widths = c(
+    2, 1, 3, 1, 3, 1, 4, 1, 5, 1,
+    3, 1, 3, 1, 3, 1, 4, 1, 5, 1,
+    9, 1, 30, 28
+  ),
+  col.names = c(
+    "res_state", "x1",
+    "res_county", "x2",
+    "res_mcd", "x3",
+    "res_msa", "x4",
+    "res_mcd_fips", "x5",
+    "work_state", "x6",
+    "work_county", "x7",
+    "work_mcd", "x8",
+    "work_msa", "x9",
+    "work_mcd_fips", "x10",
+    "workers", "x11",
+    "res_name",
+    "work_name"
+  ),
+  colClasses = "character"
+)
 
+usa_1990 <- as.data.table(usa_1990)
+
+# drop spacer columns
+usa_1990[, paste0("x", 1:11) := NULL]
+
+# numeric worker count
+usa_1990[, workers := as.numeric(trimws(workers))]
+
+## 2002-2025 -------------------------------------------------------------------
 for (s in states) {
   
   for (y in years) {
@@ -275,10 +310,7 @@ for (s in states) {
   }
 }
 
-################################################################################
 # Combine all collapsed files
-################################################################################
-
 files <- list.files(
   paste0(path, "/clean_no_crosswalk"),
   pattern = "_collapsed_no_crosswalk\\.csv$",
@@ -290,22 +322,12 @@ lodes_all <- rbindlist(
   fill = TRUE
 )
 
-################################################################################
 # Check uniqueness
-################################################################################
-
-dupes <- lodes_all[
-  ,
-  .N,
-  by = .(county, year)
-][N > 1]
+dupes <- lodes_all[,.N,by = .(county, year)][N > 1]
 
 print(dupes)
 
-################################################################################
 # Save national collapsed dataset
-################################################################################
-
 fwrite(
   lodes_all,
   paste0(
@@ -313,30 +335,3 @@ fwrite(
     "/../output/lodes_collapsed_all_no_crosswalk.csv"
   )
 )
-
-################################################################################
-# Basic checks
-################################################################################
-
-print(table(lodes_all$year))
-print(table(lodes_all$state_str))
-
-# overall
-print(summary(lodes_all$outside_d_jobs))
-
-# industry
-print(summary(lodes_all$outside_d_goods_jobs))
-print(summary(lodes_all$outside_d_trade_jobs))
-print(summary(lodes_all$outside_d_servc_jobs))
-
-# age
-print(summary(lodes_all$outside_d_age29_jobs))
-print(summary(lodes_all$outside_d_age30_54_jobs))
-print(summary(lodes_all$outside_d_age55_jobs))
-
-# earnings
-print(summary(lodes_all$outside_d_earn1250_jobs))
-print(summary(lodes_all$outside_d_earn1251_3333_jobs))
-print(summary(lodes_all$outside_d_earn3333_jobs))
-
-################################################################################

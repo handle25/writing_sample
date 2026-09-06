@@ -231,14 +231,11 @@ for (s in states) {
   }
 }
 
-################################################################################
 # Finished
-################################################################################
 
 print("LODES state-level annual pull complete.")
-
-# get 2000 
-
+# Pull and collapse ------------------------------------------------------------
+## 2000 ------------------------------------------------------------------------
 base_url <- paste0(
   "https://www2.census.gov/programs-surveys/decennial/",
   "tables/2000/county-to-county-worker-flow-files/"
@@ -271,3 +268,112 @@ for (st in states) {
     )
   )
 }
+
+## 1990 ------------------------------------------------------------------------
+options(timeout = 600)
+url <- "https://www2.census.gov/programs-surveys/commuting/datasets/1990/worker-flow/usresco.txt"
+
+usa_1990 <- read.fwf(
+  url,
+  widths = c(
+    2, 1, 3, 1, 3, 1, 4, 1, 5, 1,
+    3, 1, 3, 1, 3, 1, 4, 1, 5, 1,
+    9, 1, 30, 28
+  ),
+  col.names = c(
+    "res_state", "x1",
+    "res_county", "x2",
+    "res_mcd", "x3",
+    "res_msa", "x4",
+    "res_mcd_fips", "x5",
+    "work_state", "x6",
+    "work_county", "x7",
+    "work_mcd", "x8",
+    "work_msa", "x9",
+    "work_mcd_fips", "x10",
+    "workers", "x11",
+    "res_name",
+    "work_name"
+  ),
+  colClasses = "character"
+)
+
+usa_1990 <- as.data.table(usa_1990)
+usa_1990[, paste0("x", 1:11) := NULL]
+
+usa_1990[, workers := as.numeric(trimws(workers))]
+
+# Convert geography codes to numeric
+usa_1990[, res_state_num   := as.integer(trimws(res_state))]
+usa_1990[, res_county_num  := as.integer(trimws(res_county))]
+usa_1990[, work_state_num  := as.integer(trimws(work_state))]
+usa_1990[, work_county_num := as.integer(trimws(work_county))]
+
+# Residence county FIPS
+usa_1990[, county :=
+           res_state_num * 1000 + res_county_num
+]
+
+# Outside county of residence
+usa_1990[, outside :=
+           fifelse(
+             res_state_num == work_state_num &
+               res_county_num == work_county_num,
+             0,
+             1
+           )
+]
+
+
+# # drop spacer columns
+# usa_1990[, paste0("x", 1:11) := NULL]
+# # numeric worker count
+# usa_1990[, workers := as.numeric(trimws(workers))]
+# 
+# # residence county FIPS
+# usa_1990[, county :=
+#            as.integer(paste0(res_state, res_county))]
+# 
+# # working outside county of residence
+# usa_1990[, outside :=
+#            fifelse(
+#              res_state == work_state &
+#                res_county == work_county,
+#              0,
+#              1
+#            )]
+
+usa_1990[, outside_jobs := workers * outside]
+
+outside_1990 <- usa_1990 |>
+  fgroup_by(county) |>
+  fsummarize(
+    total_jobs   = fsum(workers),
+    outside_jobs = fsum(outside_jobs)
+  ) |>
+  data.table()
+
+outside_1990[, outside_d_jobs :=
+               outside_jobs / total_jobs]
+
+outside_1990[, year := 1990]
+
+outside_1990 <- outside_1990[
+  ,
+  .(
+    county,
+    year,
+    total_jobs,
+    outside_jobs,
+    outside_d_jobs
+  )
+]
+
+
+fwrite(
+  outside_1990,
+  paste0(
+    output_dir,
+    "/1990_commuting_collapsed.csv"
+  )
+)

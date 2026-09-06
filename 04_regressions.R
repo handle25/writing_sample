@@ -4,6 +4,7 @@
 path <- "D:/writing_sample/data"
 local <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
 reg <- fread(paste0(path, "/output/transformed_reg.csv"))
+date <- Sys.Date()
 
 reg07 <- reg[year %in% c(2000, 2007)]
 reg13 <- reg[year %in% c(2007, 2013)]
@@ -33,7 +34,7 @@ names_dict <- c(
     "Period 2",
   
   "l_shind_manuf" =
-    "Initial Manufacturing Share",
+    "Lagged Manufacturing Share",
   
   
   # Services -------------------------------------------------------------------
@@ -182,45 +183,85 @@ names_dict <- c(
     "$\\frac{Net\\ Migration}{Emp_{workplace}}$",
   
   "net_migration_share_population" =
-    "$\\frac{Net\\ Migration}{Population}$"
+    "$\\frac{Net\\ Migration}{Population}$", 
+  
+  "l_y" = "Lagged Dep Var", 
+  "w_d_labor_force_share_population"= 
+    "$\\Delta \\frac{Labor\\ Force}{Population}$",
+  
+  "w_d_unemployed_share_labor_force"= 
+    "$\\Delta \\frac{Unemployed}{Labor\\ Force}$",
+  
+  "w_net_migration_share_population_2000"= 
+    "$ \\frac{Net Migration}{Population_{2000}}$"
+  
 )
 
 
 ################################################################################
 # Baseline models
 ################################################################################
-baseline <- function(dep_vars, desc) {
+baseline <- function(
+    dep_vars,
+    desc,
+    base_year = 1995,
+    shock_us = "w_IPW_US",
+    shock_oth = "w_IPW_OTH"
+) {
+  
+  # Years needed to construct baseline levels correctly
+  years_keep <- unique(c(base_year, 2000, 2007, 2013))
+  
+  reg_temp <- copy(reg[year %in% years_keep])
+  setorder(reg_temp, area_fips, year)
+  
   mods07 <- lapply(dep_vars, function(y) {
+    
+    base_y <- sub("^w_", "", y)
+    base_y <- sub("^d_", "", base_y)
+    
+    # Baseline level of outcome
+    reg_temp[, l_y := shift(get(base_y)), by = area_fips]
+    
+    reg_temp[, t2 := as.integer(year == 2007)]
     
     fml <- as.formula(
       paste0(
         y,
-        " ~ t2 + l_shind_manuf | ",
-        "w_IPW_US ~ w_IPW_OTH"
+        " ~ t2 + l_y | ",
+        shock_us, " ~ ", shock_oth
       )
     )
     
     feols(
       fml,
-      data = reg07,
+      data = reg_temp[year %in% c(2000, 2007)],
       weights = ~baseline_emp,
       cluster = ~statefip
     )
   })
   
+  
   mods13 <- lapply(dep_vars, function(y) {
+    
+    base_y <- sub("^w_", "", y)
+    base_y <- sub("^d_", "", base_y)
+    
+    reg_temp[, l_y := shift(get(base_y)), by = area_fips]
+    
+    reg_temp[, t2 := as.integer(year == 2013)]
     
     fml <- as.formula(
       paste0(
         y,
-        " ~ t2 + l_shind_manuf | ",
-        "w_IPW_US ~ w_IPW_OTH"
+        " ~ t2  + l_y |  ",
+        shock_us, " ~ ", shock_oth
       )
     )
     
     feols(
       fml,
-      data = reg13,
+      data = reg_temp[year %in% c(2007, 2013)],
       weights = ~baseline_emp,
       cluster = ~statefip
     )
@@ -229,15 +270,13 @@ baseline <- function(dep_vars, desc) {
   
   mods <- c(mods07, mods13)
   
-  names(mods) <- c(
-    dep_vars,
-    dep_vars
-  )
+  names(mods) <- c(dep_vars, dep_vars)
   
   etable(
     mods,
     dict = names_dict,
     drop = "Constant",
+    digits = 3,
     headers = list(
       "2000--2007" = length(dep_vars),
       "2007--2013" = length(dep_vars)
@@ -247,7 +286,8 @@ baseline <- function(dep_vars, desc) {
       path,
       "/../figures/model_",
       desc,
-      "_0826.tex"
+      date,
+      ".tex"
     ),
     replace = TRUE
   )
@@ -261,9 +301,42 @@ baseline(
 )
 
 baseline(
+  "w_net_migration_share_population_2000",
+  "w_net_migration_share_population_2000"
+)
+
+  
+baseline(
+  "w_d_labor_force_share_population_2000",
+  "w_d_labor_force_share_population_2000"
+)
+baseline(
+  "w_d_outside_jobs_share_population_t_1",
+  "w_d_outside_jobs_share_population_t_1",
+  base_year = 1990,
+  shock_us = "w_IPW_US_10yr",
+  shock_oth = "w_IPW_OTH_10yr"
+)
+
+baseline(
+  "w_d_outside_jobs_share_population_t_1",
+  "w_d_outside_jobs_share_population_t_1",
+  base_year = 1990,
+  shock_us = "w_IPW_US_10yr",
+  shock_oth = "w_IPW_OTH_10yr"
+)
+
+
+baseline(
   "w_d_workplace_emp_share_population",
   "w_d_workplace_emp_share_population"
 )
+
+baseline(
+  "w_d_unemployed_share_labor_force",
+  "w_d_unemployed_share_labor_force"
+)
+
 
 
 baseline(
@@ -281,6 +354,7 @@ baseline(
   "resident_emp_share_population"
 )
 
+
 ################################################################################
 # Baseline actual 
 ################################################################################
@@ -292,14 +366,14 @@ baseline <- function(dep_vars, desc) {
     fml <- as.formula(
       paste0(
         y,
-        " ~ t2 + l_shind_manuf | ",
+        " ~ t2 | ",
         "w_IPW_US ~ w_IPW_OTH"
       )
     )
     
     feols(
       fml,
-      data = reg,
+      data = reg[year %in% c(2007, 2013)],
       weights = ~baseline_emp,
       cluster = ~statefip+year
     )
@@ -311,12 +385,13 @@ baseline <- function(dep_vars, desc) {
     mods,
     dict = names_dict,
     drop = "Constant",
+    digits = 3, 
     tex = TRUE,
     file = paste0(
       path,
       "/../figures/model_",
       desc,
-      "_0826.tex"
+      date, ".tex"
     ),
     replace = TRUE
   )
@@ -336,7 +411,7 @@ quantile_models <- function(dep_vars, desc) {
     fml <- as.formula(
       paste0(
         y,
-        " ~ t2 + l_shind_manuf | ",
+        " ~ t2  | ",
         "w_IPW_US ~ w_IPW_OTH"
       )
     )
@@ -346,7 +421,7 @@ quantile_models <- function(dep_vars, desc) {
       data = reg,
       weights = ~baseline_emp,
       cluster = ~statefip,
-      split = ~quantile
+      split = ~quantyes ile
     )
   })
   
@@ -362,7 +437,7 @@ quantile_models <- function(dep_vars, desc) {
       path,
       "/../figures/quantile_",
       desc,
-      "_0826.tex"
+      date, ".tex"
     ),
     replace = TRUE
   )
@@ -390,17 +465,19 @@ reg[, quantile := cut(
 ################################################################################
 # Outside employment outcomes
 ################################################################################
-# 
-# dep_vars <- c(
-#   "w_d_outside_jobs_share_total_goods_jobs",
-#   "w_d_outside_goods_jobs_share_outside_jobs",
-#   "w_d_outside_goods_jobs_share_population",
-#   "w_d_resident_emp_share_population"
-# )
-# 
-# baseline(
-#   dep_vars,
-#   "outside_jobs")
+reg[, t2 := ifelse(year == 2013, 1,0)]
+reg13 <- reg[year %in% c(2007, 2013)]
+dep_vars <- c(
+  "w_d_outside_jobs_share_total_goods_jobs",
+  "w_d_outside_goods_jobs_share_outside_jobs",
+  "w_d_outside_goods_jobs_share_population",
+  "w_d_resident_emp_share_population"
+)
+
+
+baseline(
+  dep_vars,
+  "outside_jobs")
 
 
 ################################################################################
@@ -605,131 +682,65 @@ summary(
 ################################################################################
 # Maps
 ################################################################################
-
 counties <- counties(cb = TRUE, year = 2020)
-
 counties$area_fips <- as.integer(counties$GEOID)
 
-map_dt <- merge(
-  counties,
-  reg,
-  by = "area_fips",
-  all.x = TRUE
-)
+q <- quantile(reg[,d_sh_empl_mfg], probs = c(.05, .95), na.rm = T)
+reg[,w_d_sh_empl_mfg := d_sh_empl_mfg]
+reg[w_d_sh_empl_mfg < q[1], w_d_sh_empl_mfg := q[1]]
+reg[w_d_sh_empl_mfg > q[2], w_d_sh_empl_mfg := q[2]]
+plot_reg <- copy(reg)
 
+for (y in c(2000, 2007, 2013)){
+  map_dt <- merge(
+    counties,
+    plot_reg,
+    by = "area_fips",
+    all.x = TRUE
+  ) |> 
+    filter(year == y )
+  
+  plot <- ggplot(map_dt) +
+    geom_sf(
+      aes(fill = w_d_sh_empl_mfg),
+      color = "grey70",
+      linewidth = 0.1
+    ) +
+    coord_sf(
+      xlim = c(-93, -77),
+      ylim = c(37, 48)
+    ) + 
+    scale_fill_gradient2(
+      low = "red",
+      high = "blue",
+      midpoint = 0
+    ) +
+    theme_void() 
+  ggsave(paste0(path,"/../figures/w_d_sh_empl_mfg_",y, date,".pdf"), 
+         height = 6, width = 6)
+  
+  plot_full <- ggplot(map_dt) +
+    geom_sf(
+      aes(fill = w_d_sh_empl_mfg),
+      color = "grey70",
+      linewidth = 0.1
+    ) +
+    coord_sf(
+      xlim = c(-120, -60),
+      ylim = c(24, 50)
+    ) +
+    scale_fill_gradient2(
+      low = "red",
+      high = "blue",
+      midpoint = 0
+    ) +
+    theme_void() 
+  
+  ggsave(paste0(path,"/../figures/w_d_sh_empl_mfg_",y,"_full", date, ".pdf"),
+         height = 6, width = 6)
+  
+  assign(paste0("plot", y), plot)
+  assign(paste0("plot_full", y), plot_full)
+  
+}
 
-ggplot(map_dt) +
-  geom_sf(
-    aes(fill = w_d_workplace_emp_share_population),
-    color = "grey70",
-    linewidth = 0.1
-  ) +
-  coord_sf(
-    xlim = c(-90, -80),
-    ylim = c(34, 50)
-  ) +
-  scale_fill_gradient2(
-    low = "red",
-    mid = "green",
-    high = "blue",
-    midpoint = 0
-  ) +
-  theme_void()
-
-
-
-exit 
-
-ggplot(map_dt) +
-  geom_sf(
-    aes(fill = w_net_migration_share_population_t0),
-    color = "grey70",
-    linewidth = 0.1
-  ) +
-  coord_sf(
-    xlim = c(-125, -66),
-    ylim = c(24, 50)
-  ) +
-  theme_void()
-
-ggplot(map_dt) +
-  geom_sf(
-    aes(fill = w_net_migration_share_population_t0),
-    color = "grey70",
-    linewidth = 0.1
-  ) +
-  coord_sf(
-    xlim = c(-90, -80),
-    ylim = c(34, 50)
-  ) +
-  scale_fill_gradient2(
-    low = "red",
-    mid = "white",
-    high = "blue",
-    midpoint = 0
-  ) +
-  theme_void()
-
-
-ggplot(map_dt[map_dt$year == 2007,]) +
-  geom_sf(
-    aes(fill = log_population),
-    color = "grey70",
-    linewidth = 0.1
-  ) +
-  coord_sf(
-    xlim = c(-90, -80),
-    ylim = c(34, 50)
-  ) +
-  scale_fill_gradient2(
-    low = "red",
-    mid = "white",
-    high = "blue",
-    midpoint =10
-  ) +
-  theme_void()
-
-
-
-
-library(patchwork)
-
-p1 <- ggplot(map_dt) +
-  geom_sf(
-    aes(fill = d_outside_jobs_share_total_goods_jobs),
-    color = "grey70",
-    linewidth = 0.1
-  ) +
-  coord_sf(
-    xlim = c(-90, -80),
-    ylim = c(34, 50)
-  ) +
-  scale_fill_gradient2(
-    low = "red",
-    mid = "green",
-    high = "blue",
-    midpoint = 0
-  ) +
-  theme_void()
-
-
-p2 <- ggplot(map_dt[map_dt$year == 2007,]) +
-  geom_sf(
-    aes(fill = log_population),
-    color = "grey70",
-    linewidth = 0.1
-  ) +
-  coord_sf(
-    xlim = c(-90, -80),
-    ylim = c(34, 50)
-  ) +
-  scale_fill_gradient2(
-    low = "red",
-    mid = "green",
-    high = "blue",
-    midpoint = 10
-  ) +
-  theme_void()
-
-
-p1 + p2

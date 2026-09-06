@@ -33,7 +33,7 @@ make_share_diff <- function(dt, num, denom, id = "area_fips") {
   share_var <- paste0(num, "_share_", denom)
   diff_var  <- paste0("d_", share_var)
   
-  dt[, (share_var) := get(num) / get(denom)]
+  dt[, (share_var) := get(num) / get(denom) * 100 ]
   
   dt[, (diff_var) :=
        get(share_var) -
@@ -44,18 +44,36 @@ make_share_diff <- function(dt, num, denom, id = "area_fips") {
 }
 
 diff_denom_all <- function(dt, var) { 
-    make_share_diff(dt, var, "resident_emp")
-    make_share_diff(dt, var, "workplace_emp")
-    make_share_diff(dt, var, "outside_jobs")
-    make_share_diff(dt, var, "total_servc_jobs")
-    make_share_diff(dt, var, "total_goods_jobs")
-    make_share_diff(dt, var, "population")
-  }
+  make_share_diff(dt, var, "resident_emp")
+  make_share_diff(dt, var, "workplace_emp")
+  make_share_diff(dt, var, "outside_jobs")
+  make_share_diff(dt, var, "total_servc_jobs")
+  make_share_diff(dt, var, "total_goods_jobs")
+  make_share_diff(dt, var, "population")
+  make_share_diff(dt, var, "population_2000")
+}
+
+
+make_base_year <- function(dt, var, base_year = 2000, id = "area_fips") {
+  newvar <- paste0(var, "_", base_year)
+  dt_year <- dt[
+    year == base_year,
+    .(value = mean(get(var), na.rm = TRUE)),
+    by = area_fips
+  ]
+  setnames(dt_year, "value", newvar)
+  dt <- merge(dt, dt_year, 
+              by = "area_fips", 
+              all.x = T)
+  return(dt)
+}
+
 ################################################################################
 # Population
 ################################################################################
 acs <- fread(paste0(path, "/acs/population_1995_2023.csv"))
 
+acs <- make_base_year(acs, "population")
 
 ################################################################################
 # Read datasets
@@ -77,22 +95,64 @@ qcew[, .(
 qcew[, area_fips_str := sprintf("%06d", area_fips)]
 qcew[, state := floor(area_fips / 1000)]
 
-
-
+# LAUS for unemployment --------------------------------------------------------
+laus <- read_excel(paste0(path, "/laus/laucnty90.xlsx"), skip = 1)
+for (year in c(1991:2024)) {
+  y <- sprintf("%02.f", as.integer(substr(as.character(year), 3,4)))
+  laus <- rbind(laus, 
+                read_excel(paste0(path, "/laus/laucnty", y, ".xlsx"),
+                           skip = 1)
+  )
+}
+laus <- laus |> 
+  clean_names() |>
+  data.table() |> 
+  fmutate(area_fips = as.integer(
+    paste0(state_fips_code, county_fips_code)), 
+    year = as.integer(year))
 # LODES ------------------------------------------------------------------------
 
 lodes <- fread(
   paste0(
     path,
-    "/output/lodes_collapsed_all_no_crosswalk.csv"
+    "/output/lp_new_lodes_collapsed_all_no_crosswalk.csv"
   )
 )
 
-lodes[
-  year %in% c(2002, 2003, 2004),
-  year := 2000
-]
+lodes <- lodes[year %in% c(1990, 2000, 2007, 2013)]
 
+setnames(
+  lodes,
+  "total_jobs",
+  "resident_emp"
+)
+
+
+lodes <- merge(
+  lodes,
+  acs,
+  by.x = c("county", "year"),
+  by.y = c("area_fips", "year"),
+  all.x = TRUE
+) 
+
+setorder(lodes, county, year)
+lodes[, population_t_1 := shift(population), by = county]
+make_share_diff(lodes, "outside_jobs", "population", id = "county")
+make_share_diff(lodes, "outside_jobs", "population_2000", id = "county")
+make_share_diff(lodes, "outside_jobs", "resident_emp", id = "county")
+
+
+lodes[, d_outside_jobs :=
+        outside_jobs - shift(outside_jobs),
+      by = county]
+
+lodes[, d_outside_jobs_share_population_t_1 :=
+        d_outside_jobs / population_t_1 * 100]
+
+winsor(lodes, "d_outside_jobs_share_population_t_1")
+
+lodes[, population := NULL]
 
 # IRS --------------------------------------------------------------------------
 
@@ -104,6 +164,7 @@ cols <- setdiff(names(irs), c("area_fips", "year"))
 
 irs[, (cols) := lapply(.SD, as.numeric), .SDcols = cols]
 
+irs[year %in% c(1990:1995), new_year := 1995]
 irs[year %in% c(1995:2000), new_year := 2000]
 irs[year %in% c(2001:2006), new_year := 2007]
 irs[year %in% c(2007:2012), new_year := 2013]
@@ -121,7 +182,7 @@ reg <- merge(
   lodes,
   by.x = c("area_fips", "year"),
   by.y = c("county", "year"), 
-  all.x = TRUE
+  all = TRUE
 )
 
 nrow(reg)
@@ -137,6 +198,13 @@ nrow(reg)
 
 reg <- merge(
   reg,
+  laus,
+  by = c("area_fips", "year"),
+  all.x = TRUE
+)
+
+reg <- merge(
+  reg,
   acs,
   by = c("area_fips", "year"),
   all.x = TRUE
@@ -146,19 +214,6 @@ setorder(
   reg,
   area_fips,
   year
-)
-
-
-################################################################################
-# Rename fundamental employment concepts
-################################################################################
-
-# LODES:
-# Employed residents of the county, regardless of workplace county
-setnames(
-  reg,
-  "total_jobs",
-  "resident_emp"
 )
 
 
@@ -178,6 +233,13 @@ reg[, statefip :=
 ################################################################################
 
 reg[, net_migration := (returns_3_inflow) - (returns_3_outflow)]
+reg[,lfp := labor_force / population*100]
+make_share_diff(reg, "labor_force", "population")
+make_share_diff(reg, "labor_force", "workplace_emp")
+make_share_diff(reg, "unemployed", "labor_force")
+reg <- make_base_year(reg, "population")
+
+reg[,unemp_check := unemployed / labor_force*100 ]
 
 # Net migration relative to employed residents
 diff_denom_all(reg, "net_migration")
@@ -197,25 +259,28 @@ make_share_diff(reg, "workplace_emp", "resident_emp")
 # Variables to difference in levels
 ################################################################################
 
-level_vars <- c(
-  grep("^outside.*_jobs$", names(reg), value = TRUE),
-  grep("^total.*_jobs$", names(reg), value = TRUE),
-  grep("^inside.*_jobs$", names(reg), value = TRUE)
-)
-
-level_vars <- unique(level_vars)
-
-for (i in level_vars) {
-  diff_denom_all(reg, i)
-}
+# level_vars <- c(
+#   grep("^outside.*_jobs$", names(reg), value = TRUE),
+#   grep("^total.*_jobs$", names(reg), value = TRUE),
+#   grep("^inside.*_jobs$", names(reg), value = TRUE)
+# )
+# 
+# level_vars <- unique(level_vars)
+# 
+# for (i in level_vars) {
+#   diff_denom_all(reg, i)
+# }
 
 winsor(reg, "IPW_US") 
 winsor(reg, "IPW_OTH") 
+winsor(reg, "IPW_US_10yr") 
+winsor(reg, "IPW_OTH_10yr") 
 
 # net migration are already flows, no need to difference. 
 winsor(reg, "net_migration_share_resident_emp")
 winsor(reg, "net_migration_share_workplace_emp")
 winsor(reg, "net_migration_share_population")
+winsor(reg, "net_migration_share_population_2000")
 ################################################################################
 # Save
 ################################################################################

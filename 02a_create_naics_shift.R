@@ -9,7 +9,7 @@
 rm(list = ls())
 
 # qcewdata 
-path <- "D:/writing_sample/data/qcew"
+path <- "D:/writing_sample/data"
 setwd(path)
 
 # Create a 1:1 crosswalk hs10 -> hs6 -> naics ----------------------------------
@@ -30,7 +30,7 @@ setorder(cw, year, hs6, -import_value)
 cw_1to1 <- cw[, .SD[1], by = .(year, hs6)]
 
 # Bring in trade data at hs6 level, merge to naics6 ---------------------------- 
-years <- c(1995, 2000, 2007, 2013)
+years <- c(1995,1990, 2000, 2007, 2013)
 shock_list <- vector("list", length(years))
 
 for (i in seq_along(years)) {
@@ -41,7 +41,9 @@ for (i in seq_along(years)) {
     paste0(path, "/comtrade/TradeData_8_7_2026_", y, ".csv"),
     fill = TRUE,
     quote = "\"",
-    integer64 = "double"
+    colClasses = list(
+      numeric = c("cifvalue", "fobvalue", "primaryValue")
+    )
   ) |>
     fselect(
       reporterCode, reporterISO, flowCode, partnerISO, refYear, refPeriodId,
@@ -101,9 +103,35 @@ rep_wide <- dcast(
   value.var = "imports"
 )
 
+rep_wide[, Delta_M_1990_2000 := `2000` - `1990`]
 rep_wide[, Delta_M_2000 := `2000` - `1995`]
 rep_wide[, Delta_M_2007 := `2007` - `2000`]
 rep_wide[, Delta_M_2013 := `2013` - `2007`]
+
+# save 1990 shock separately 
+rep_1990_2000 <- rep_wide[
+  ,
+  .(
+    reporterISO,
+    naics3,
+    Delta_M = Delta_M_1990_2000
+  )
+]
+
+rep_1990_2000[, refYear := 2000]
+
+rep_1990_2000 <- dcast(
+  rep_1990_2000,
+  naics3 + refYear ~ reporterISO,
+  value.var = "Delta_M"
+)
+
+setnames(
+  rep_1990_2000,
+  old = c("USA", "OTH"),
+  new = c("Delta_M_US_10yr", "Delta_M_OTH_10yr")
+)
+
 
 rep <- melt(
   rep_wide,
@@ -134,5 +162,19 @@ setnames(
 # save the dollar shift in trade 
 fwrite(rep, file = paste0(path, "/output/Delta_M_naics3.csv"))
 
+setnames(
+  rep,
+  old = c("Delta_M_US", "Delta_M_OTH"),
+  new = c("Delta_M_US_10yr", "Delta_M_OTH_10yr")
+)
 
+rep_1990_2000 <- rbind(
+  rep[refYear %in% c(2007, 2013)],
+  rep_1990_2000
+)
+
+fwrite(
+  rep_1990_2000,
+  paste0(path, "/output/Delta_M_naics3_1990_2000.csv")
+)
 

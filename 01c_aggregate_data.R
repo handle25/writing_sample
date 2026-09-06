@@ -1,6 +1,7 @@
 path <- "D:/writing_sample/data"
 # using U.S. HS10 import values to select the dominant SIC within each HS6
-weights <- data.table(read_stata(paste0(path, "/peter_schott/imp_detl_yearly_91n/imp_detl_yearly_91n.dta")))
+weights <- data.table(read_stata(paste0(path, "/peter_schott/imp_detl_yearly_90n/imp_detl_yearly_90n.dta")))
+weights <- rbind(weights, data.table(read_stata(paste0(path, "/peter_schott/imp_detl_yearly_91n/imp_detl_yearly_91n.dta"))), fill = TRUE)
 weights <- rbind(weights, data.table(read_stata(paste0(path, "/peter_schott/imp_detl_yearly_95n/imp_detl_yearly_95n.dta"))), fill = TRUE)
 weights <- rbind(weights, data.table(read_stata(paste0(path, "/peter_schott/imp_detl_yearly_100n/imp_detl_yearly_100n.dta"))), fill = TRUE)
 weights <- rbind(weights, data.table(read_stata(paste0(path, "/peter_schott/imp_detl_yearly_107n/imp_detl_yearly_107n.dta"))), fill = TRUE)
@@ -86,6 +87,12 @@ fwrite(
 
 
 # aggregate lodes for lps ------------------------------------------------------
+outside_1990 <- fread(
+  paste0(
+    path,
+    "/lodes/clean_lp_full/new_clean_lp_full/1990_commuting_collapsed.csv"
+  )
+)
 
 states <- tolower(state.abb)
 years <- c(2002:2023)
@@ -144,6 +151,7 @@ outside_2001[, year := 2001]
 
 outside <- rbind(outside, outside_2001)
 lodes <- rbind(lodes_baseline, outside, fill = TRUE)
+lodes <- rbind(lodes, outside_1990, fill = TRUE)
 
 fwrite(
   lodes,

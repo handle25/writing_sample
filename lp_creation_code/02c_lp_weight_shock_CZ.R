@@ -9,6 +9,7 @@ rm(list = ls())
 
 # qcewdata 
 path <- "D:/writing_sample/data"
+date <- Sys.Date()
 setwd(path)
 
 # read in country industry level data ------------------------------------------
@@ -23,6 +24,26 @@ shock <- fread(paste0(path, "/output/Delta_M_naics3_lp.csv"))
 crosswalk <- read_excel("cz00eqvv1.xls") |> 
   data.table() |> 
   clean_names()
+
+counties <- counties(cb = TRUE, year = 2020)
+counties$area_fips <- as.integer(counties$GEOID)
+cz_geo <- merge(
+  counties,
+  crosswalk[, .(fips, commuting_zone_id_2000)],
+  by.x = "area_fips",
+  by.y = "fips",
+  all.x = TRUE
+)
+
+cz_geo <- cz_geo |>
+  filter(!is.na(commuting_zone_id_2000)) |>
+  group_by(commuting_zone_id_2000) |>
+  summarise()
+
+saveRDS(
+  cz_geo,
+  file = paste0(path, "/output/cz_map.rds")
+)
 
 # merge in crosswalk 
 qcew_naics3 <- merge(qcew_naics3, 

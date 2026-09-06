@@ -10,7 +10,7 @@
 path <- "D:/writing_sample/data/qcew"
 setwd(path)
 
-years <- seq(1995,2025)
+years <- c(1990, 1991, seq(1995,2025))
 
 for (y in years) {
   

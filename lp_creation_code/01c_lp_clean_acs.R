@@ -45,7 +45,7 @@ acs[,area_fips := as.character(as.integer(area_fips))]
 # population -------------------------------------------------------------------
 
 pop_list <- list()
-for (y in c(1995:1999)){
+for (y in c(1990:1999)){
   url <- paste0(
     "https://www2.census.gov/programs-surveys/popest/",
     "tables/1990-2000/intercensal/st-co/stch-icen", y, ".txt"
