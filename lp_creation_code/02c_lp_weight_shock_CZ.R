@@ -134,7 +134,7 @@ qcew_outcome <- copy(qcew_naics3)
 # population weights -----------------------------------------------------------
 acs <- fread(paste0(path, "/acs/population_1995_2023.csv"))
 acs[, area_fips := as.character(area_fips)]
-
+acs[, area_fips := sprintf("%05d", as.integer(area_fips))]
 #collapse acs to commuting zone values 
 acs <- merge(acs, crosswalk, 
               by.x = "area_fips", 
@@ -150,6 +150,7 @@ acs <- acs |>
   data.table()
 
 fwrite(acs, paste0(path, "/output/population_1995_2023_CZ.csv"))
+acs[, area_fips := as.character(area_fips)]
 
 # Create QCEW employment weights -----------------------------------------------
 # take one base period for now 

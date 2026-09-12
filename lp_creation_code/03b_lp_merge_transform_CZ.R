@@ -28,6 +28,43 @@ cw_s <- copy(crosswalk) |>
   fsummarize(state = flast(state))
 crosswalk[, state := NULL ]
 
+# functions --------------------------------------------------------------------
+make_share <- function(dt, num, denom) {
+  
+  share_var <- paste0(num, "_share_", denom)
+  
+  dt[, (share_var) := get(num) / get(denom)]
+  
+  winsor(dt, share_var)
+}
+
+winsor <- function(dt, var, p = 0.01) {
+  q <- quantile(dt[[var]], probs = c(p, 1 - p), na.rm = TRUE)
+  
+  w_var <- paste0("w_", var)
+  
+  dt[, (w_var) := pmin(pmax(get(var), q[1]), q[2])]
+}
+
+make_base_year <- function(dt, var, base_year = 2000) {
+  
+  newvar <- paste0(var, "_", base_year)
+  
+  dt_year <- dt[
+    year == base_year,
+    .(value = mean(get(var), na.rm = TRUE)),
+    by = commuting_zone_id_2000
+  ]
+  
+  setnames(dt_year, "value", newvar)
+  
+  dt <- merge(dt, dt_year, 
+              by = "commuting_zone_id_2000", 
+              all.x = T)
+  
+  return(dt)
+}
+
 ################################################################################
 # Population
 ################################################################################
@@ -74,7 +111,35 @@ qcew[, .(
 ), by = year]
 
 
-# PAUSE INCOMPLETE 
+# LAUS for unemployment --------------------------------------------------------
+laus <- read_excel(paste0(path, "/laus/laucnty90.xlsx"), skip = 1)
+for (year in c(1991:2024)) {
+  y <- sprintf("%02.f", as.integer(substr(as.character(year), 3,4)))
+  laus <- rbind(laus, 
+                read_excel(paste0(path, "/laus/laucnty", y, ".xlsx"),
+                           skip = 1)
+  )
+}
+laus <- laus |> 
+  clean_names() |>
+  data.table() |> 
+  fmutate(area_fips = as.character(as.integer(
+    paste0(state_fips_code, county_fips_code))), 
+    year = as.integer(year)) 
+
+laus <- merge(
+  laus, crosswalk, 
+  by.x = "area_fips", 
+  by.y = "fips", 
+  all.x = T
+)
+
+laus <- laus |> fgroup_by(year, commuting_zone_id_2000) |> 
+  fsummarize(unemployed = fsum(unemployed), 
+             employed = fsum(employed), 
+             labor_force = fsum(labor_force)) |> 
+  fmutate(unemployment_rate_percent = unemployed / labor_force)
+  
 # LODES ------------------------------------------------------------------------
 
 lodes <- fread(
@@ -109,6 +174,20 @@ drop_vars   # inspect first
 
 lodes[, (drop_vars) := NULL]
 
+# Labor force denominator -------------------------------------------------------
+lodes <- merge(
+  lodes,
+  laus,
+  by = c("commuting_zone_id_2000", "year"),
+  all.x = TRUE
+)
+
+setorder(lodes, commuting_zone_id_2000, year)
+
+# Standard outside-jobs / labor-force share and long difference
+make_share(lodes, "outside_jobs", "labor_force")
+
+
 # IRS --------------------------------------------------------------------------
 
 irs <- fread(
@@ -127,9 +206,7 @@ irs <- irs |>
   fsum()
 
 
-################################################################################
-# Merge datasets
-################################################################################
+# Merge datasets ---------------------------------------------------------------
 
 reg <- merge(
   qcew,
@@ -170,29 +247,7 @@ setorder(
 )
 
 # winsorize function 
-
-winsor <- function(dt, var, p = 0.01) {
-  
-  q <- quantile(
-    dt[[var]],
-    probs = c(p, 1 - p),
-    na.rm = TRUE
-  )
-  
-  w_var <- paste0("w_", var)
-  
-  dt[, (w_var) := pmin(
-    pmax(get(var), q[1]),
-    q[2]
-  )]
-}
-
-
-
-################################################################################
 # Rename fundamental employment concepts
-################################################################################
-
 # QCEW:
 # Employment located at establishments in the county
 setnames(
@@ -209,18 +264,15 @@ setnames(
   "resident_emp"
 )
 
-
-################################################################################
-# Basic regression variables
-################################################################################
-
-################################################################################
 # Net migration flows
-################################################################################
 
 reg[, net_migration :=
       as.integer(returns_3_inflow) -
       as.integer(returns_3_outflow)]
+
+reg[, net_migration_outofstate :=
+      as.integer(returns_2_inflow) -
+      as.integer(returns_2_outflow)]
 
 # Net migration relative to employed residents
 reg[, net_migration_share_resident_emp :=
@@ -232,24 +284,27 @@ reg[, net_migration_share_workplace_emp :=
 reg[, net_migration_share_population :=
       net_migration / population]
 
+reg[, net_migration_outofstate_share_population :=
+      net_migration_outofstate / population]
+
 reg[, net_migration_share_population_t0 :=
       net_migration / shift(population, type = "lag", n = 1), by = .(commuting_zone_id_2000)]
+
+reg <- make_base_year(reg, "population", 2000)
+make_share(reg, "outside_jobs", "population_2000")
 
 # Winsorize net migration share -----------------------------------------------
 for (v in c("net_migration_share_workplace_emp",
             "net_migration_share_resident_emp",
             "net_migration_share_population",
             "net_migration_share_population_t0", 
+            "net_migration_outofstate_share_population",
             "IPW_US", "IPW_OTH")){
   winsor(reg, v)
 }
 
 
 # Winsorize vars ---------------------------------------------------------------
-################################################################################
-# Employment-to-population ratios
-################################################################################
-
 # Employment of county residents / county population
 reg[, resident_emp_population_ratio :=
       resident_emp / population]
@@ -260,10 +315,6 @@ reg[, workplace_emp_population_ratio :=
 
 winsor(reg, "resident_emp_population_ratio")
 winsor(reg, "workplace_emp_population_ratio")
-
-################################################################################
-# Construct level shares for LP outcomes
-################################################################################
 
 level_vars <- c(
   grep("^outside.*_jobs$", names(reg), value = TRUE),
@@ -300,11 +351,6 @@ for (i in level_vars) {
         get(i) / population]
 }
 
-
-################################################################################
-# Winsorize level shares at 1st / 99th percentiles
-################################################################################
-
 share_vars <- grep(
   "_share_(resident_emp|workplace_emp|outside_jobs|service_jobs|goods_jobs|population)$",
   names(reg),
@@ -316,10 +362,6 @@ for (v in share_vars) {
 }
 
 reg[, workplace_emp_share_resident_emp := workplace_emp / resident_emp]
-
-################################################################################
-# Manufacturing employment relative to resident employment
-################################################################################
 
 reg[, manuf_share_emp :=
       manufac_emp / workplace_emp]

@@ -9,7 +9,7 @@ library(data.table)
 
 path <- "D:/writing_sample/data/qcew"
 
-years <- 2015:2025
+years <- 1992:1994
 
 for (y in years) {
   

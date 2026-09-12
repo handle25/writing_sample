@@ -10,20 +10,53 @@ figure_1 <- T
 figure_2 <- T
 figure_3 <- T
 figure_4 <- T
+date <- Sys.Date()
 
 # qcewdata 
 path <- "D:/writing_sample/data"
 figs <- "D:/writing_sample/figures"
 local <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
 setwd(path)
+
+# read in data -----------------------------------------------------------------
+reg <- fread(paste0(path, "/output/lp_transformed_reg.csv")) 
+
+setorder(reg, area_fips, year)
+
+reg[, l1_net_migration_share_population :=
+      shift(net_migration / population, 1),
+    by = area_fips]
+
+reg[, l2_net_migration_share_population :=
+      shift(net_migration / population, 2),
+    by = area_fips]
+
 # function definition ----------------------------------------------------------
+winsor <- function(dt, var, p = 0.01) {
+  
+  q <- quantile(
+    dt[[var]],
+    probs = c(p, 1 - p),
+    na.rm = TRUE
+  )
+  
+  w_var <- paste0("w_", var)
+  
+  dt[, (w_var) := pmin(
+    pmax(get(var), q[1]),
+    q[2]
+  )]
+}
+
 run_lp <- function(
     reg,
     outcome,
     start_year = 2000,
-    end_year = 2014,
+    end_year = 2007,
     horizons = 0:7,
-    figure = TRUE
+    figure = TRUE, 
+    denominator = "population_2000", 
+    controls = ""
 ) {
   
   reg <- copy(reg)
@@ -41,22 +74,43 @@ run_lp <- function(
   ]
   
   # Log outcome
-  reg[, y_lp := log(get(outcome))]
-  # Lagged outcome controls
-  reg[, l1_y := shift(y_lp, 1), by = area_fips]
-  reg[, l2_y := shift(y_lp, 2), by = area_fips]
-  reg[, l3_y := shift(y_lp, 3), by = area_fips]
-  reg[, l4_y := shift(y_lp, 4), by = area_fips]
+  # reg[, y_lp := log(get(outcome))]
+  reg[, y_lp := get(outcome) ]
+  
+  reg[, y_control := get(outcome) / get(denominator) * 100]
+  
+  reg[, l1_y := shift(y_control, 1), by = area_fips]
+  reg[, l2_y := shift(y_control, 2), by = area_fips]
+  reg[, l3_y := shift(y_control, 3), by = area_fips]
+  reg[, l4_y := shift(y_control, 4), by = area_fips]
+  
+  reg[, denom := shift(
+    get(denominator),
+    1
+  ), by = area_fips]
   
   # LP outcomes
   for (h in horizons) {
     
-    var <- paste0("diff_", h)
+    var <- paste0("diff_base_", h)
+    dvar <- paste0("diff_", h)
     
     reg[, (var) :=
           shift(y_lp, type = "lead", n = h) -
           shift(y_lp, type = "lag", n = 1),
         by = area_fips]
+    reg[, (dvar) := get(var) / denom * 100 ]
+  }
+  
+  # Restrict to estimation period AFTER constructing leads/lags
+  reg_est <- reg[year %in% start_year:end_year]
+  
+  # Winsorize LP outcome separately at each horizon
+  for (h in horizons) {
+    
+    dvar <- paste0("diff_", h)
+    
+    winsor(reg_est, dvar)
   }
   
   # Store results
@@ -69,17 +123,18 @@ run_lp <- function(
   # Run LPs
   for (hh in horizons) {
     
-    var <- paste0("diff_", hh)
+    var <- paste0("w_diff_", hh)
     
     mod <- feols(
       as.formula(
         paste0(
           var,
-          " ~ l1_y + l2_y + l3_y + l4_y  | year | ",
+          " ~ l1_y + l2_y + l_sh_empl_mfg", controls, 
+          "| year +area_fips  | ",
           "w_IPW_US ~ w_IPW_OTH"
         )
       ),
-      data = reg[year %in% start_year:end_year],
+      data = reg_est,
       cluster = ~area_fips + year
     )
     
@@ -123,7 +178,7 @@ run_lp <- function(
       theme_bw()
     
     ggsave(
-      paste0(figs, "/baseline_lp_", outcome, ".pdf"),
+      paste0(figs, "/differenced_lp_", outcome, "_share_", denominator, date, ".pdf"),
       p,
       height = 4,
       width = 4
@@ -133,124 +188,14 @@ run_lp <- function(
   return(results)
 }
 
-state_crosswalk <- data.table(
-  state = c(
-    1,2,4,5,6,8,9,10,12,13,15,16,17,18,19,20,21,22,23,24,
-    25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,
-    44,45,46,47,48,49,50,51,53,54,55,56
-  ),
-  state_str = state.abb,
-  region = state.region,
-  division = state.division
-)
+# run regs ---------------------------------------------------------------------
+reg[, l_sh_empl_mfg := shift(sh_empl_mfg), by = area_fips]
+run_lp(reg, outcome = "outside_jobs", denominator = "population")
+run_lp(reg, outcome = "outside_jobs", denominator = "labor_force")
+run_lp(reg, outcome = "net_migration", denominator = "population")
+run_lp(reg, outcome = "net_migration", denominator = "population_2000")
+run_lp(reg, outcome = "labor_force", denominator = "population", controls = "+l1_net_migration_share_population +l2_net_migration_share_population")
+run_lp(reg, outcome = "unemployed", denominator = "population", controls = "")
+run_lp(reg, outcome = "unemployed", denominator = "labor_force")
+run_lp(reg, outcome = "outside_jobs", denominator = "population_2000", controls = "+l1_net_migration_share_population")
 
-
-reg <- fread(paste0(path, "/output/lp_transformed_reg.csv"))
-reg <- reg[year < 2017,]
-reg[,test := log(resident_emp)]
-reg[, total_jobs := total_goods_jobs + total_servc_jobs + total_trade_jobs]
-# reg <- reg[year %in% c(2007:2017), ]
-# begin regressions ------------------------------------------------------------
-base_t0 <- "total_goods_jobs_share_resident_emp"
-# w_outside_earn3333_jobs_share_resident_emp 
-significant <- c(
-  "w_outside_jobs_share_resident_emp",
-  "w_outside_servc_jobs_share_resident_emp",
-  "w_outside_goods_jobs_share_resident_emp",
-  "w_outside_jobs_share_population",
-  "w_total_goods_jobs_share_resident_emp",
-  "w_manuf_share_emp",
-  "w_manuf_emp_share_pop"
-)
-
-# significant <- c("net_migration_share_population")
-
-dep_vars <- c(
-  
-  # Services / commuting
-  "w_d_outside_servc_jobs_share_total_servc_jobs",
-  "w_d_outside_servc_jobs_share_resident_emp",
-  "w_d_outside_jobs_share_resident_emp",
-  
-  # Services overall
-  "w_d_total_servc_jobs_share_resident_emp",
-  
-  # Employment / population
-  "w_d_resident_emp_share_population",
-  "w_d_workplace_emp_share_population",
-  
-  # High-earning outside employment
-  "w_d_outside_earn3333_jobs_share_resident_emp",
-  "w_d_outside_earn3333_jobs_share_outside_jobs",
-  "w_d_outside_earn3333_jobs_share_workplace_emp"
-)
-
-
-# keep constant sample 
-reg <- reg[
-  area_fips %in% reg[, .N, by = area_fips][N == length(unique(reg[,year])), area_fips]
-]
-
-results <- run_lp(
-  reg,
-  "industry_hhi"
-)
-
-q99 <- quantile(reg[,industry_hhi] , probs = .99, na.rm = T)
-q01 <- quantile(reg[,industry_hhi] , probs = .01, na.rm = T)
-
-reg[industry_hhi < q01, industry_hhi := q01]
-reg[industry_hhi > q99, industry_hhi := q99]
-results <- run_lp(
-  reg,
-  "industry_hhi"
-)
-
-results <- run_lp(
-  reg,
-  "industry_hhi_nomanufac"
-)
-
-run_lp(reg, "w_d_outside_servc_jobs_share_resident_emp")
-run_lp(reg, "net_migration")
-run_lp(reg, "outside_jobs")
-
-# reg[, w_outside_jobs_share_resident_emp := log(w_outside_jobs_share_resident_emp)]
-results <- run_lp(
-  reg,
-  "w_outside_jobs_share_resident_emp"
-)
-
-q99 <- quantile(reg[,industry_hhi] , probs = .99, na.rm = T)
-q01 <- quantile(reg[,industry_hhi] , probs = .01, na.rm = T)
-
-reg[industry_hhi < q01, industry_hhi := q01]
-reg[industry_hhi > q99, industry_hhi := q99]
-results <- run_lp(
-  reg,
-  "industry_hhi"
-)
-
-
-results_migration <- run_lp(
-  reg = reg,
-  "w_net_migration_share_population"
-)
-
-
-results_migration <- run_lp(
-  reg = reg,
-  "w_manuf_share_emp"
-)
-
-results_migration <- run_lp(
-  reg = reg,
-  "w_manuf_emp_share_pop"
-)
-
-
-reg[, mean_travel_time_to_work_minutes := log(mean_travel_time_to_work_minutes)]
-results <- run_lp(
-  reg = reg,
-  "mean_travel_time_to_work_minutes"
-)

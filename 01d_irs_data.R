@@ -46,6 +46,7 @@ for (state in states_2002) {
     dt <- read_excel(
       paste0(
         path,
+        "/2002to2003countymigration/",
         "/2002to2003CountyMigration/",
         flow_dir,
         "/co203",

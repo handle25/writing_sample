@@ -236,13 +236,208 @@ future_lapply(1990:1991, function(y) {
   )
 })
 
-################################################################################
-# 1995-2003
-################################################################################
-
+##############################################################################
+# 1992:1994
+##############################################################################
 states <- tolower(state.abb)
 flows <- c("i", "o")
+
 future_lapply(1992:1994, function(y) {
+  
+  dt_list <- vector("list", length(states) * length(flows))
+  k <- 1
+  
+  for (state in states) {
+    
+    for (f in flows) {
+      
+      ##########################################################################
+      # Flow
+      ##########################################################################
+      
+      if (f == "i") {
+        flow_dir <- paste0(y, "to", y + 1, "CountyMigrationInflow")
+        flow_name <- "inflow"
+      } else {
+        flow_dir <- paste0(y, "to", y + 1, "CountyMigrationOutflow")
+        flow_name <- "outflow"
+      }
+      
+      ##########################################################################
+      # Directory
+      ##########################################################################
+      
+      flow_path <- paste0(
+        path, "/",
+        y, "to", y + 1,
+        "countymigration/",
+        y, "to", y + 1,
+        "CountyMigration/",
+        flow_dir
+      )
+      
+      ##########################################################################
+      # Filename
+      ##########################################################################
+      
+      if (y == 1992) {
+        year_code <- "9293"
+        file_pattern <- paste0("^C", year_code, state, f, "\\.xls")
+      } else {
+        year_code <- paste0(sprintf("%02d", y %% 100), (y + 1) %% 10)
+        file_pattern <- paste0("^co", year_code, state, f, "\\.xls$")
+      }
+      
+      file <- list.files(
+        flow_path,
+        pattern = file_pattern,
+        full.names = TRUE,
+        ignore.case = TRUE
+      )
+      
+      if (length(file) != 1) {
+        stop(paste(
+          "Expected 1 file but found", length(file),
+          "for year", y,
+          "state", state,
+          "flow", flow_name,
+          "\nExpected pattern:", file_pattern,
+          "\nDirectory:", flow_path
+        ))
+      }
+      
+      ##########################################################################
+      # Read
+      ##########################################################################
+      
+      dt <- read_excel(
+        file,
+        skip = 7,
+        col_names = FALSE
+      ) |> data.table()
+      
+      dt <- dt[, 1:9]
+      
+      setnames(
+        dt,
+        names(dt),
+        c(
+          "base_state", "base_county",
+          "other_state", "other_county",
+          "state_abb", "desc",
+          "returns", "exemptions", "agi"
+        )
+      )
+      
+      cols <- c(
+        "base_state", "base_county",
+        "other_state", "other_county",
+        "returns", "exemptions", "agi"
+      )
+      
+      dt[, (cols) := lapply(.SD, as.numeric), .SDcols = cols]
+      
+      ##########################################################################
+      # Drop state aggregate
+      ##########################################################################
+      
+      dt <- dt[base_county != 0]
+      
+      ##########################################################################
+      # Migration type
+      #
+      # 1 = Same State
+      # 2 = Different State
+      #     = Same Region, Diff. State + Different Region
+      # 3 = Total Migrant
+      ##########################################################################
+      
+      dt[, type := NA_integer_]
+      
+      dt[
+        grepl("^Same State$", trimws(desc), ignore.case = TRUE),
+        type := 1L
+      ]
+      
+      dt[
+        grepl("Same Region, Diff\\. State", desc, ignore.case = TRUE) |
+          grepl("^Different Region$", trimws(desc), ignore.case = TRUE),
+        type := 2L
+      ]
+      
+      dt[
+        grepl("Total Migrant", desc, ignore.case = TRUE),
+        type := 3L
+      ]
+      
+      dt <- dt[!is.na(type)]
+      
+      ##########################################################################
+      # County FIPS
+      ##########################################################################
+      
+      dt[, area_fips := paste0(
+        sprintf("%02d", base_state),
+        sprintf("%03d", base_county)
+      )]
+      
+      ##########################################################################
+      # Reshape wide
+      ##########################################################################
+      
+      dt_wide <- dcast(
+        dt,
+        area_fips ~ type,
+        value.var = c("returns", "exemptions", "agi"),
+        fun.aggregate = sum,
+        na.rm = TRUE
+      )
+      
+      ##########################################################################
+      # Flow and year
+      ##########################################################################
+      
+      dt_wide[, `:=`(
+        flow = flow_name,
+        year = y
+      )]
+      
+      ##########################################################################
+      # Save to list
+      ##########################################################################
+      
+      dt_list[[k]] <- dt_wide
+      
+      print(paste("Finished:", y, state, flow_name))
+      k <- k + 1
+    }
+  }
+  
+  ##########################################################################
+  # Bind and save year
+  ##########################################################################
+  
+  irs_fill <- rbindlist(
+    dt_list,
+    use.names = TRUE,
+    fill = TRUE
+  )
+  
+  fwrite(
+    irs_fill,
+    paste0(path, "/lp_irs_migration_", y, ".csv")
+  )
+  
+  print(paste("Saved year:", y))
+})
+
+##########################################################################
+# 1995:2003
+##########################################################################
+states <- tolower(state.abb)
+flows <- c("i", "o")
+
+future_lapply(1995:2012, function(y) {
   
   dt_list <- vector(
     "list",
@@ -285,49 +480,30 @@ future_lapply(1992:1994, function(y) {
       
       flow_path <- paste0(
         path, "/",
-        
         y, "to", y + 1,
         "countymigration/",
-        
         y, "to", y + 1,
         "CountyMigration/",
-        
         flow_dir
       )
       
       
       ##########################################################################
-      # Exact file pattern
+      # File
       ##########################################################################
       
-      if (y == 1992) {
-        
-        year_code <- "9293"
-        
-        file_pattern <- paste0(
-          "^C",
-          year_code,
-          state,
-          f,
-          "\\.xlsx?$"
-        )
-        
-      } else {
-        
-        year_code <- paste0(
-          sprintf("%02d", y %% 100),
-          (y + 1) %% 10
-        )
-        
-        file_pattern <- paste0(
-          "^co",
-          year_code,
-          state,
-          f,
-          "\\.xls$"
-        )
-      }
+      year_code <- paste0(
+        sprintf("%02d", y %% 100),
+        sprintf("%02d", (y + 1) %% 100)
+      )
       
+      file_pattern <- paste0(
+        "^C",
+        year_code,
+        state,
+        f,
+        "\\.txt$"
+      )
       
       file <- list.files(
         flow_path,
@@ -336,88 +512,69 @@ future_lapply(1992:1994, function(y) {
         ignore.case = TRUE
       )
       
-      # Check that exactly one file was found
       if (length(file) != 1) {
         
         stop(
           paste(
             "Expected 1 file but found",
             length(file),
-            "for year",
+            "for",
             y,
-            "state",
             state,
-            "flow",
-            flow_name,
-            "\nExpected pattern:",
-            file_pattern,
-            "\nDirectory:",
-            flow_path
+            flow_name
           )
         )
       }
       
       
-      dt <- read_excel(
+      ##########################################################################
+      # Read lines
+      ##########################################################################
+      
+      x <- readLines(
         file,
-        skip = 7,
-        col_names = FALSE
-      ) |>
-        data.table()
-      
-      dt <- dt[, 1:9]
-      
-      setnames(
-        dt,
-        old = names(dt),
-        new = c(
-          "base_state",
-          "base_county",
-          "other_state",
-          "other_county",
-          "state_abb",
-          "desc",
-          "returns",
-          "exemptions",
-          "agi"
-        )
+        warn = FALSE
       )
       
-      # Keep US migration summary rows
-      dt <- dt[other_state == 97]
       
       ##########################################################################
-      # Migration type
+      # Keep county total migration rows
       ##########################################################################
       
-      dt[, type := NA_integer_]
-      
-      dt[
-        grepl("Same St", desc, ignore.case = TRUE),
-        type := 1L
+      x <- x[
+        grepl(
+          "^[0-9]{2}\\s+[0-9]{3}.*Total",
+          x
+        )
       ]
-      
-      dt[
-        grepl("Diff St", desc, ignore.case = TRUE),
-        type := 2L
-      ]
-      
-      dt[
-        grepl("Tot Mig-US$", desc, ignore.case = TRUE) |
-          grepl("Total Mig - US$", desc, ignore.case = TRUE),
-        type := 3L
-      ]
-      
-      dt <- dt[!is.na(type)]
       
       
       ##########################################################################
-      # Drop state aggregate
+      # Extract variables
       ##########################################################################
       
-      dt <- dt[
-        as.integer(base_county) != 0
-      ]
+      dt <- data.table(
+        
+        base_state = as.integer(
+          substr(x, 1, 2)
+        ),
+        
+        base_county = as.integer(
+          substr(x, 4, 6)
+        ),
+        
+        returns_3 = as.numeric(
+          trimws(
+            substr(x, 40, 48)
+          )
+        ),
+        
+        exemptions_3 = as.numeric(
+          trimws(
+            substr(x, 57, 64)
+          )
+        )
+      )
       
       
       ##########################################################################
@@ -425,39 +582,24 @@ future_lapply(1992:1994, function(y) {
       ##########################################################################
       
       dt[, area_fips := paste0(
-        sprintf("%02d", as.integer(base_state)),
-        sprintf("%03d", as.integer(base_county))
+        sprintf("%02d", base_state),
+        sprintf("%03d", base_county)
       )]
-      
-      
-      ##########################################################################
-      # Reshape wide
-      ##########################################################################
-      
-      dt_wide <- dcast(
-        dt,
-        area_fips ~ type,
-        value.var = c(
-          "returns",
-          "exemptions",
-          "agi"
-        )
-      )
       
       
       ##########################################################################
       # Flow and year
       ##########################################################################
       
-      dt_wide[, flow := flow_name]
-      dt_wide[, year := y]
+      dt[, flow := flow_name]
+      dt[, year := y]
       
       
       ##########################################################################
-      # Save to list
+      # Save
       ##########################################################################
       
-      dt_list[[k]] <- dt_wide
+      dt_list[[k]] <- dt
       
       print(
         paste(
@@ -474,7 +616,7 @@ future_lapply(1992:1994, function(y) {
   
   
   ##############################################################################
-  # Combine states and flows for year
+  # Combine
   ##############################################################################
   
   irs_fill <- rbindlist(
@@ -505,6 +647,7 @@ future_lapply(1992:1994, function(y) {
     )
   )
 })
+
 
 ################################################################################
 # 2004-2010
@@ -899,6 +1042,7 @@ dt <- rbindlist(
   use.names = TRUE,
   fill = TRUE
 )
+dt <- dt[!(area_fips == 1001 & year == 1993 & flow == "inflow")]
 
 irs_wide <- dcast(
   dt,

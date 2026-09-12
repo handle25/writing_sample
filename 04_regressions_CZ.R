@@ -3,7 +3,7 @@
 ################################################################################
 path <- "D:/writing_sample/data"
 local <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
-reg <- fread(paste0(path, "/output/transformed_reg.csv"))
+reg <- fread(paste0(path, "/output/transformed_reg_CZ.csv"))
 date <- Sys.Date()
 
 reg07 <- reg[year %in% c(2000, 2007)]
@@ -15,11 +15,19 @@ reg13[, t2 := as.integer(year == 2013)]
 reg25[, t2 := as.integer(year == 2025)]
 
 winsor <- function(dt, var, p = 0.01) {
-  q <- quantile(dt[[var]], probs = c(p, 1 - p), na.rm = TRUE)
+  
+  q <- quantile(
+    dt[[var]],
+    probs = c(p, 1 - p),
+    na.rm = TRUE
+  )
   
   w_var <- paste0("w_", var)
   
-  dt[, (w_var) := pmin(pmax(get(var), q[1]), q[2])]
+  dt[, (w_var) := pmin(
+    pmax(get(var), q[1]),
+    q[2]
+  )]
 }
 
 ################################################################################
@@ -27,6 +35,7 @@ winsor <- function(dt, var, p = 0.01) {
 ################################################################################
 
 names_dict <- c(
+  
   # Regressors -----------------------------------------------------------------
   
   "fit_IPW_US" =
@@ -276,40 +285,20 @@ baseline <- function(
   
   mods <- c(mods07, mods13)
   names(mods) <- c(dep_vars, dep_vars)
-  file <- paste0(path, "/../figures/model_", desc, date, ".tex")
   
   etable(
     mods,
     dict = names_dict,
-    drop = c("Constant", "sh_popfborn", "sh_popedu_c", "l_sh_empl_mfg"),
-    extralines = list(
-      "\\midrule Baseline manufacturing share" = c("$\\checkmark$", "$\\checkmark$"),
-      "Baseline demographic controls " = c("$\\checkmark$", "$\\checkmark$")
-    ),
+    drop = "Constant",
     digits = 3,
-    style.tex = style.tex(
-      var.title = "",
-      fixef.title = "",
-      stats.title = ""
-    ),
     headers = list(
       "2000--2007" = length(dep_vars),
       "2007--2013" = length(dep_vars)
     ),
     tex = TRUE,
-    file = file,
+    file = paste0(path, "/../figures/model_", desc, date, "_CZ.tex"),
     replace = TRUE
   )
-  
-  x <- readLines(file)
-  
-  x <- sub("Dependent Variable:", "", x, fixed = TRUE)
-  x <- sub("Model:", "", x, fixed = TRUE)
-  
-  i <- grep("\\(1\\).*\\(2\\)", x)
-  x <- append(x, "\\midrule", after = i)
-  
-  writeLines(x, file)
   
   invisible(mods)
 }
@@ -317,15 +306,9 @@ baseline <- function(
 # first figure -----------------------------------------------------------------
 baseline(
   "d_sh_empl_mfg",
-  "figure_1_w", 
+  "d_sh_empl_mfg", 
   controls_1 = "t2 +l_sh_empl_mfg + sh_popfborn + sh_popedu_c",
   controls_2 = "t2 +l_sh_empl_mfg + sh_popfborn + sh_popedu_c"
-)
-baseline(
-  "d_sh_empl_mfg",
-  "figure_1_noctrl", 
-  controls_1 = "t2 +l_sh_empl_mfg ",
-  controls_2 = "t2 +l_sh_empl_mfg "
 )
 
 
@@ -344,7 +327,7 @@ baseline(
   controls_1 = "t2 +l_sh_empl_mfg + sh_popfborn + sh_popedu_c",
   controls_2 = "t2 +l_sh_empl_mfg + sh_popfborn + sh_popedu_c"
 )
-  
+
 # fourth figure ----------------------------------------------------------------
 baseline(
   "w_d_outside_jobs_share_population",
@@ -414,7 +397,7 @@ baseline_controls <- function(dep_var, desc,
       "2007--2013" = length(controls)
     ),
     tex = TRUE,
-    file = paste0(path, "/../figures/controls_", desc, date, ".tex"),
+    file = paste0(path, "/../figures/controls_", desc, date, "_CZ.tex"),
     replace = TRUE
   )
 }
@@ -440,8 +423,8 @@ baseline_controls(
   "w_d_unemployed_share_l_labor_force",
   "unemployment"
 )
-reg[, l_unemployed:= shift(unemployed), by = area_fips]
-reg[, l_labor_force:= shift(labor_force), by = area_fips]
+reg[, l_unemployed:= shift(unemployed), by = commuting_zone_id_2000]
+reg[, l_labor_force:= shift(labor_force), by = commuting_zone_id_2000]
 reg[, d_unemployed_share_l_labor_force := (unemployed - l_unemployed) / l_labor_force * 100]
 winsor(reg, "d_unemployed_share_l_labor_force")
 
@@ -514,7 +497,7 @@ baseline_controls(
 )
 
 
-  baseline_controls(
+baseline_controls(
   "inflow_share_population_t0",
   "inflow_share_population_t0"
 )
@@ -559,7 +542,7 @@ baseline <- function(dep_vars, desc) {
       path,
       "/../figures/model_",
       desc,
-      date, ".tex"
+      date, "_CZ.tex"
     ),
     replace = TRUE
   )
@@ -605,7 +588,7 @@ quantile_models <- function(dep_vars, desc) {
       path,
       "/../figures/quantile_",
       desc,
-      date, ".tex"
+      date, "_CZ.tex"
     ),
     replace = TRUE
   )
@@ -851,7 +834,7 @@ summary(
 # Maps
 ################################################################################
 counties <- counties(cb = TRUE, year = 2020)
-counties$area_fips <- as.integer(counties$GEOID)
+counties$commuting_zone_id_2000 <- as.integer(counties$GEOID)
 
 q <- quantile(reg[,d_sh_empl_mfg], probs = c(.05, .95), na.rm = T)
 reg[,w_d_sh_empl_mfg := d_sh_empl_mfg]
@@ -863,7 +846,7 @@ for (y in c(2000, 2007, 2013)){
   map_dt <- merge(
     counties,
     plot_reg,
-    by = "area_fips",
+    by = "commuting_zone_id_2000",
     all.x = TRUE
   ) |> 
     filter(year == y )

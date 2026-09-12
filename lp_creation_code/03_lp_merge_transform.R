@@ -81,10 +81,58 @@ qcew[, .(
 qcew[, area_fips_str := sprintf("%06d", area_fips)]
 qcew[, state := floor(area_fips / 1000)]
 
-# LODES commuting 
-lodes <- fread(paste0(path,"/output/lp_new_lodes_collapsed_all_no_crosswalk.csv"))
+# LAUS for unemployment --------------------------------------------------------
+laus <- read_excel(paste0(path, "/laus/laucnty90.xlsx"), skip = 1)
+for (year in c(1991:2024)) {
+  y <- sprintf("%02.f", as.integer(substr(as.character(year), 3,4)))
+  laus <- rbind(laus, 
+                read_excel(paste0(path, "/laus/laucnty", y, ".xlsx"),
+                           skip = 1)
+  )
+}
+laus <- laus |> 
+  clean_names() |>
+  data.table() |> 
+  fmutate(area_fips = as.integer(
+    paste0(state_fips_code, county_fips_code)), 
+    year = as.integer(year))
 
-# IRS migration 
+# LAUS for unemployment --------------------------------------------------------
+laus <- read_excel(paste0(path, "/laus/laucnty90.xlsx"), skip = 1)
+for (year in c(1991:2024)) {
+  y <- sprintf("%02.f", as.integer(substr(as.character(year), 3,4)))
+  laus <- rbind(laus, 
+                read_excel(paste0(path, "/laus/laucnty", y, ".xlsx"),
+                           skip = 1)
+  )
+}
+laus <- laus |> 
+  clean_names() |>
+  data.table() |> 
+  fmutate(area_fips = as.integer(
+    paste0(state_fips_code, county_fips_code)), 
+    year = as.integer(year))
+
+
+# LODES commuting --------------------------------------------------------------
+lodes <- fread(paste0(path,"/output/lp_new_lodes_collapsed_all_no_crosswalk.csv"))
+setnames(lodes, "county", "area_fips")
+# Labor force denominator -------------------------------------------------------
+lodes <- merge(
+  lodes,
+  laus,
+  by = c("area_fips", "year"),
+  all.x = TRUE
+)
+
+setorder(lodes, area_fips, year)
+
+# Standard outside-jobs / labor-force share and long difference
+make_share(lodes, "outside_jobs", "labor_force")
+cols <- setdiff(names(laus), c("area_fips", "year"))
+lodes[, (cols) := lapply(.SD, function(x) NULL), .SDcols = cols]
+
+# IRS migration ----------------------------------------------------------------
 irs <- fread(paste0(path, "/irs/lp_irs_migration_full.csv"))
 
 cols <- names(irs)[sapply(irs, is.character)]
@@ -95,8 +143,7 @@ irs[, (cols) := lapply(.SD, as.numeric), .SDcols = cols]
 reg <- merge(
   qcew,
   lodes,
-  by.x = c("area_fips", "year"),
-  by.y = c("county", "year"),
+  by = c("area_fips", "year"),
   all.x = TRUE
 )
 
@@ -109,6 +156,12 @@ reg <- merge(
   all.x = TRUE
 )
 
+reg <- merge(
+  reg,
+  laus,
+  by = c("area_fips", "year"),
+  all.x = TRUE
+)
 nrow(reg)
 
 reg <- merge(

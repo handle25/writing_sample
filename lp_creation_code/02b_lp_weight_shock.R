@@ -14,7 +14,7 @@ setwd(path)
 # read in country industry level data ------------------------------------------
 # has location area_fips which is county level 
 # save
-qcew_naics3 <- fread(paste0(path, "/qcew/clean/new_full_qcew_1995_2025.csv"))
+qcew_naics3 <- fread(paste0(path, "/qcew/clean/new_full_qcew_naics3_1990_2025.csv"))
 
 # Industry concentration -------------------------------------------------------
 
@@ -180,7 +180,7 @@ fwrite(instrument, file = paste0(path, "/output/lp_final_ipw_naics3.csv"))
 
 # Get employment outcome -------------------------------------------------------
 # Use NAICS2 data since manufacturing is identified cleanly there
-qcew_outcome <- fread(paste0(path, "/qcew/clean/new_full_qcew_1995_2025.csv"))
+qcew_outcome <- fread(paste0(path, "/qcew/clean/new_full_qcew_naics3_1990_2025.csv"))
 qcew_outcome <- merge(
   qcew_outcome,
   county_concentration,

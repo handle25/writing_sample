@@ -90,13 +90,14 @@ run_lp <- function(
       as.formula(
         paste0(
           var,
-          " ~ l1_y + l2_y | area_fips + year | ",
+          " ~ l1_y + l2_y + l_shind_manuf | area_fips + year | ",
           "w_IPW_US ~ ",
           "w_IPW_OTH "
         )
       ),
       data = reg[year %in% start_year:end_year],
-      cluster = ~area_fips
+      cluster = ~area_fips,
+      weights = ~baseline_emp
     )
     
     print(summary(mod))
@@ -168,6 +169,12 @@ reg[resident_workplace_emp_gap_share_population>=quants[2],
 reg[resident_workplace_emp_gap_share_population<=quants[1], 
     resident_workplace_emp_gap_share_population := quants[1]]
 
+reg[, l_labor_force := shift(labor_force), by = area_fips]
+run_lp(reg, "w_outside_jobs_share_l_labor_force", 
+       start_year = 2000, 
+       end_year = 2007)
+
+
 run_lp(reg, "resident_workplace_emp_gap_share_population", 
        start_year = 2000, 
        end_year = 2007)
@@ -177,36 +184,16 @@ run_lp(reg, "l_workplace_emp",
        start_year = 2000, 
        end_year = 2007)
 
-
-run_lp(reg, "w_net_migration_share_population_2000", 
-       start_year = 2000, 
-       end_year = 2007)
-
-run_lp(reg, "w_net_migration_share_population_2007", 
-       start_year = 2007, 
-       end_year = 2015)
-
-run_lp(reg, "w_net_migration_share_population_2000", 
-       start_year = 2000, 
-       end_year = 2007)
-
 run_lp(reg, "w_outside_jobs_share_population_2000", start_year = 2002, 
+       end_year = 2007)
+
+run_lp(reg, "w_outside_jobs_share_population", start_year = 2002, 
        end_year = 2007)
 
 
 run_lp(reg, "w_net_migration_share_population", 
        start_year = 2007, 
        end_year = 2015)
-
-run_lp(reg, "w_outside_jobs_share_population", start_year = 2002, 
-       end_year = 2007)
-
-run_lp(reg, "w_outside_jobs_share_population", start_year = 2002, 
-       end_year = 2007)
-
-
-run_lp(reg, "w_outside_jobs_share_population", start_year = 2007, 
-       end_year = 2012)
 
 reg[, d_outside_jobs_share_population := 
       outside_jobs_share_population - shift(
@@ -225,6 +212,7 @@ run_lp(reg, "w_net_migration_share_population_t_1")
 
 run_lp(reg, "w_manufac_emp_share_population")
 
+run_lp(reg, "sh_empl_mfg")
 run_lp(reg, "sh_empl_mfg")
 
 

@@ -10,7 +10,7 @@
 path <- "D:/writing_sample/data/qcew"
 setwd(path)
 
-years <- c(1990, 1991, seq(1995,2025))
+years <- c(1990:2025)
 
 for (y in years) {
   
@@ -49,43 +49,43 @@ for (y in years) {
   setwd(path)
 }
 
-
-qcew_list <- list()
+qcew_naics3_list <- list()
+qcew_naics2_list <- list()
 
 for (y in years) {
   
   raw <- fread(paste0(path, "/clean/new_full_", y, ".csv"))
-  qcew_naics3 <- raw[agglvl_code == 75]
-  if ("annual_avg_estabs" %in% names(qcew_naics3)) {
-    setnames(qcew_naics3, "annual_avg_estabs", "annual_avg_estabs_count")
+  
+  for (lvl in c(75, 74)) {
+    
+    qcew_temp <- raw[agglvl_code == lvl]
+    
+    if ("annual_avg_estabs" %in% names(qcew_temp)) {
+      setnames(qcew_temp, "annual_avg_estabs", "annual_avg_estabs_count")
+    }
+    
+    qcew_temp <- qcew_temp |>
+      fgroup_by(area_fips, industry_code, year) |>
+      fsummarize(
+        total_annual_wages = fsum(total_annual_wages),
+        annual_avg_emplvl = fsum(annual_avg_emplvl),
+        annual_avg_estabs_count = fsum(annual_avg_estabs_count)
+      ) |>
+      ungroup() |>
+      data.table()
+    
+    if (lvl == 75) qcew_naics3_list[[length(qcew_naics3_list) + 1]] <- qcew_temp
+    if (lvl == 74) qcew_naics2_list[[length(qcew_naics2_list) + 1]] <- qcew_temp
   }
-  
-  # collapse to county x industry x year
-  qcew_naics3 <- qcew_naics3 |>
-    fgroup_by(area_fips, industry_code, year) |>
-    fsummarize(
-      total_annual_wages = fsum(total_annual_wages),
-      annual_avg_emplvl = fsum(annual_avg_emplvl),
-      annual_avg_estabs_count = fsum(annual_avg_estabs_count)
-    ) |>
-    ungroup() |>
-    data.table()
-  
-  qcew_list[[length(qcew_list) + 1]] <- qcew_naics3
 }
 
-dt <- rbindlist(qcew_list, fill = TRUE)
+qcew_naics3 <- rbindlist(qcew_naics3_list, fill = TRUE)
+qcew_naics2 <- rbindlist(qcew_naics2_list, fill = TRUE)
 
-# save
-fwrite(
-  dt,
-  paste0(path, "/clean/new_full_qcew_1995_2025.csv")
-)
+fwrite(qcew_naics3, paste0(path, "/clean/new_full_qcew_naics3_1990_2025.csv"))
+fwrite(qcew_naics2, paste0(path, "/clean/new_full_qcew_naics2_1990_2025.csv"))
 
-# clear memory before next year
-rm(dt, qcew_list)
+rm(qcew_naics3, qcew_naics2, qcew_naics3_list, qcew_naics2_list)
 gc()
 
 setwd(path)
-
-
