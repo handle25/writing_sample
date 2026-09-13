@@ -103,7 +103,12 @@ for (y_0 in 2000:2010) {
 
       # remove non-migrants and IRS aggregate/residual rows
       dt <- dt[home_area_fips != dest_area_fips]
-      dt <- dt[!grepl("Tot Mig|Total Mig|Other Flows|Foreign", desc)]
+      dt <- dt[
+        as.integer(base_state) %between% c(1, 56) &
+          as.integer(other_state) %between% c(1, 56) &
+          as.integer(base_county) > 0 &
+          as.integer(other_county) > 0
+      ]
 
       dt <- merge(dt, home_county_conditions, by = "home_area_fips", all.x = T)
       dt <- merge(dt, dest_county_conditions, by = "dest_area_fips", all.x = T)
@@ -195,7 +200,13 @@ for (y_0 in 2011:2021) {
     }
     
     dt <- dt[home_area_fips != dest_area_fips]
-    dt <- dt[!grepl("Tot Mig|Total Mig|Other Flows|Foreign", desc)]
+    
+    dt <- dt[
+      as.integer(base_state) %between% c(1, 56) &
+        as.integer(other_state) %between% c(1, 56) &
+        as.integer(base_county) > 0 &
+        as.integer(other_county) > 0
+    ]
     
     dt <- merge(dt, home_county_conditions, by = "home_area_fips", all.x = T)
     dt <- merge(dt, dest_county_conditions, by = "dest_area_fips", all.x = T)

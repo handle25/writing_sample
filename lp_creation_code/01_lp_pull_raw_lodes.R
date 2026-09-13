@@ -52,6 +52,37 @@ years <- 2002:2025
 # Pull and collapse
 ################################################################################
 
+
+states <- "al"
+years <- 2003
+for (s in states) {
+  
+  print(paste("Starting state:",s))
+  
+  state_output_file <- paste0(output_dir,"/clean_lp_full_",s,".csv")
+  state_list <- vector("list",length(years))
+  k <- 1
+  
+  for (y in years) {
+    print(paste("Starting:",s,y))
+    year_result <- {
+      
+      lodes <- grab_lodes(
+        state = s,
+        year = y,
+        lodes_type = "od",
+        state_part = "main",
+        download_dir = path
+      )
+      
+      lodes <- as.data.table(lodes)
+      
+    }
+  }
+}
+exit 
+
+
 for (s in states) {
   
   print(paste("Starting state:",s))

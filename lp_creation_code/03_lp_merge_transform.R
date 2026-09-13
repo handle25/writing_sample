@@ -138,6 +138,11 @@ irs <- fread(paste0(path, "/irs/lp_irs_migration_full.csv"))
 cols <- names(irs)[sapply(irs, is.character)]
 irs[, (cols) := lapply(.SD, as.numeric), .SDcols = cols]
 
+irs_detail <- fread(paste0(path, "/irs/lp_irs_destination_conditions_full.csv"))
+irs <- merge(irs, irs_detail, 
+             by.x = c("area_fips", "year"), 
+             by.y = c("home_area_fips", "year"), 
+             all.x=T)
 # Merge datasets ---------------------------------------------------------------
 
 reg <- merge(

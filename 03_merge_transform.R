@@ -42,6 +42,7 @@ diff_denom_all <- function(dt, var) {
   make_share_diff(dt, var, "total_goods_jobs")
   make_share_diff(dt, var, "population")
   make_share_diff(dt, var, "labor_force")
+  make_share_diff(dt, var, "l_labor_force")
 
 }
 
@@ -66,6 +67,12 @@ census_f <- fread(
   paste0(
     path, 
     "/census/DECENNIALSF32000.P043_2026-09-12T133538/DECENNIALSF32000.P043-Data.csv"), 
+  skip = 1) |> clean_names() 
+
+census_lf <- fread(
+  paste0(
+    path, 
+    "/census/DECENNIALSF12000.P012_2026-09-13T135137/DECENNIALSF12000.P012-Data.csv"), 
   skip = 1) |> clean_names() 
 
 census_f[, area_fips := as.integer(substr(geography, nchar(geography) - 4, nchar(geography)))]

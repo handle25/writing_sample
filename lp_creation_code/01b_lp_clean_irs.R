@@ -908,7 +908,7 @@ for (y in 4:10) {
 
 flows <- c("inflow", "outflow")
 
-for (y in 2017:2021) {
+for (y in 2011:2021) {
   
   y_0 <- sprintf("%02d", y %% 100)
   y_1 <- sprintf("%02d", (y + 1) %% 100)

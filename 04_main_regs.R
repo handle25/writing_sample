@@ -14,7 +14,10 @@ winsor <- function(dt, var, p = 0.01) {
   
   dt[, (w_var) := pmin(pmax(get(var), q[1]), q[2])]
 }
-
+winsor(reg, "outside_jobs_share_labor_force")
+setorder(reg, area_fips, year)
+reg[, l_labor_force := shift(labor_force), by = area_fips]
+reg[, l_labor_force := shift(labor_force), by = area_fips]
 reg07 <- reg[year %in% c(2000, 2007)]
 reg13 <- reg[year %in% c(2007, 2013)]
 reg25 <- reg[year %in% c(2019, 2025)]
@@ -105,7 +108,6 @@ names_dict <- c(
   
   "w_d_workplace_emp_share_population" =
     "$\\Delta \\frac{Emp_{workplace}}{Population}$",
-  
   
   # Migration ------------------------------------------------------------------
   
@@ -202,6 +204,9 @@ names_dict <- c(
   "w_d_unemployed_share_labor_force"= 
     "$\\Delta \\frac{Unemployed}{Labor\\ Force}$",
   
+  "w_d_unemployed_share_l_labor_force"= 
+    "$\\Delta \\frac{Unemployed}{Labor\\ Force_t0}$",
+  
   "w_net_migration_share_population_2000"= 
     "$ \\frac{Net\\ Migration}{Population_{2000}}$",
   
@@ -230,7 +235,10 @@ names_dict <- c(
     "$\\Delta\\frac{Labor Force}{Population_{t}}$", 
   
   "w_d_net_outmigration" =
-    "$\\Delta\\frac{Migration^{Out}_{it}}{\\sum Migration_{it}}$"
+    "$\\Delta\\frac{Migration^{Out}_{it}}{\\sum Migration_{it}}$",
+  
+  "w_d_unemployed_share_labor_force_t0"= 
+    "$\\Delta \\frac{Unemployed}{Labor\\ Force_t0}$"
   
 )
 
@@ -278,7 +286,7 @@ baseline <- function(
   mods07_ctl <- lapply(dep_vars, function(y) {
     
     fml <- as.formula(
-      paste0(y, " ~  t2  + l_sh_empl_mfg + sh_popfborn + sh_popedu_c + sh_empl_f", " | ", shock_us, " ~ ", shock_oth)
+      paste0(y, " ~  t2  + l_sh_empl_mfg + sh_popfborn + sh_popedu_c + sh_empl_f + l_labor_force", " | ", shock_us, " ~ ", shock_oth)
     )
     feols(
       fml,
@@ -317,7 +325,7 @@ baseline <- function(
   mods13_ctl <- lapply(dep_vars, function(y) {
     reg[, t2 := as.integer(year == 2013)]
     fml <- as.formula(
-      paste0(y, " ~  t2  + l_sh_empl_mfg + sh_popfborn + sh_popedu_c + sh_empl_f", " | ", shock_us, " ~ ", shock_oth)
+      paste0(y, " ~  t2  + l_sh_empl_mfg + sh_popfborn + sh_popedu_c + sh_empl_f + l_labor_force ", " | ", shock_us, " ~ ", shock_oth)
     )
     feols(
       fml,
@@ -422,6 +430,12 @@ baseline(
 )
 
 # second figure ----------------------------------------------------------------
+
+baseline(
+  "w_outside_jobs_share_labor_force",
+  "w_outside_jobs_share_labor_force"
+)
+
 baseline(
   "w_d_labor_force_share_population",
   "w_d_labor_force_share_population"
@@ -430,6 +444,11 @@ baseline(
 baseline(
   "w_d_unemployed_share_labor_force",
   "w_d_unemployed_share_labor_force"
+)
+
+baseline(
+  "w_d_unemployed_share_labor_force_t0",
+  "w_d_unemployed_share_labor_force_t0"
 )
 
 baseline(

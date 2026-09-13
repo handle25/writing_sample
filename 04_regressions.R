@@ -201,6 +201,9 @@ names_dict <- c(
   "w_d_unemployed_share_labor_force"= 
     "$\\Delta \\frac{Unemployed}{Labor\\ Force}$",
   
+  "w_d_unemployed_share_labor_force_t0"= 
+    "$\\Delta \\frac{Unemployed}{Labor\\ Force_t0}$",
+  
   "w_net_migration_share_population_2000"= 
     "$ \\frac{Net\\ Migration}{Population_{2000}}$",
   
