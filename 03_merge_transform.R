@@ -97,7 +97,7 @@ census <- census |>
   fselect(area_fips, sh_popfborn, sh_popedu_c)
 census <- merge(census, census_f, 
                 by = "area_fips", all = T) |> 
-  fmutate(l_sh_empl_f = total_female_in_labor_force /
+  fmutate(sh_empl_f = total_female_in_labor_force /
             (total_male_in_labor_force + total_female_in_labor_force))
 
 summary(census$sh_popedu_c)
@@ -347,3 +347,12 @@ fwrite(
 )
 
 fwrite(reg, paste0(local, "/output/transformed_reg.csv"))
+
+county_conditions <- reg[, .(
+  area_fips,
+  year,
+  IPW_US = w_IPW_US,
+  unemployment_rate,
+  sh_empl_mfg,
+  labor_force_share_population
+)]

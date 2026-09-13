@@ -230,7 +230,7 @@ names_dict <- c(
     "$\\Delta\\frac{Labor Force}{Population_{t}}$", 
   
   "w_d_net_outmigration" =
-    "$\\Delta\\frac{Returns^{Out}_{it}}{Returns^{Out}_{it}+Returns^{In}_{it}}$"
+    "$\\Delta\\frac{Migration^{Out}_{it}}{\\sum Migration_{it}}$"
   
 )
 
@@ -278,7 +278,7 @@ baseline <- function(
   mods07_ctl <- lapply(dep_vars, function(y) {
     
     fml <- as.formula(
-      paste0(y, " ~  t2  + l_sh_empl_mfg + sh_popfborn + sh_popedu_c", " | ", shock_us, " ~ ", shock_oth)
+      paste0(y, " ~  t2  + l_sh_empl_mfg + sh_popfborn + sh_popedu_c + sh_empl_f", " | ", shock_us, " ~ ", shock_oth)
     )
     feols(
       fml,
@@ -317,7 +317,7 @@ baseline <- function(
   mods13_ctl <- lapply(dep_vars, function(y) {
     reg[, t2 := as.integer(year == 2013)]
     fml <- as.formula(
-      paste0(y, " ~  t2  + l_sh_empl_mfg + sh_popfborn + sh_popedu_c", " | ", shock_us, " ~ ", shock_oth)
+      paste0(y, " ~  t2  + l_sh_empl_mfg + sh_popfborn + sh_popedu_c + sh_empl_f", " | ", shock_us, " ~ ", shock_oth)
     )
     feols(
       fml,
@@ -334,7 +334,7 @@ baseline <- function(
   etable(
     mods,
     dict = names_dict,
-    drop = c("Constant", "sh_popfborn", "sh_popedu_c", "l_sh_empl_mfg"),
+    drop = c("Constant", "sh_popfborn", "sh_popedu_c", "l_sh_empl_mfg","sh_empl_f"),
     extralines = list(
       "\\midrule Baseline manufacturing share" = c( "$\\checkmark$", "$\\checkmark$"),
       "Baseline demographic controls " = c("$\\checkmark$", "$\\checkmark$")
@@ -377,7 +377,7 @@ baseline <- function(
   etable(
     mods,
     dict = names_dict,
-    drop = c("Constant", "sh_popfborn", "sh_popedu_c", "l_sh_empl_mfg"),
+    drop = c("Constant", "sh_popfborn", "sh_popedu_c", "l_sh_empl_mfg","sh_empl_f"),
     extralines = list(
       "\\midrule Baseline manufacturing share" = c( "", "$\\checkmark$","$\\checkmark$","", "$\\checkmark$", "$\\checkmark$"),
       "Baseline demographic controls " = c( "","", "$\\checkmark$","","",  "$\\checkmark$")

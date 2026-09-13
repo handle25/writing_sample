@@ -52,10 +52,10 @@ run_lp <- function(
     reg,
     outcome,
     start_year = 2000,
-    end_year = 2007,
+    end_year = 2006,
     horizons = 0:7,
     figure = TRUE, 
-    denominator = "population_2000", 
+    denominator = NULL, 
     controls = ""
 ) {
   
@@ -190,7 +190,12 @@ run_lp <- function(
 
 # run regs ---------------------------------------------------------------------
 reg[, l_sh_empl_mfg := shift(sh_empl_mfg), by = area_fips]
+reg[, total_migration := returns_3_inflow + returns_3_outflow]
+reg[, net_migration := returns_3_inflow - returns_3_outflow]
+
 run_lp(reg, outcome = "outside_jobs", denominator = "population")
+run_lp(reg, outcome = "net_migration", denominator = "total_migration")
+
 run_lp(reg, outcome = "outside_jobs", denominator = "labor_force")
 run_lp(reg, outcome = "net_migration", denominator = "population")
 run_lp(reg, outcome = "net_migration", denominator = "population_2000")
@@ -198,4 +203,4 @@ run_lp(reg, outcome = "labor_force", denominator = "population", controls = "+l1
 run_lp(reg, outcome = "unemployed", denominator = "population", controls = "")
 run_lp(reg, outcome = "unemployed", denominator = "labor_force")
 run_lp(reg, outcome = "outside_jobs", denominator = "population_2000", controls = "+l1_net_migration_share_population")
-
+run_lp(reg, outcome = "net_outmigration", denominator = NULL)

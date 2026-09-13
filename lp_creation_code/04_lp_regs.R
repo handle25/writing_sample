@@ -90,7 +90,7 @@ run_lp <- function(
       as.formula(
         paste0(
           var,
-          " ~ l1_y + l2_y + l_shind_manuf | area_fips + year | ",
+          " ~ l1_y + l2_y + l_shind_manuf |  year | ",
           "w_IPW_US ~ ",
           "w_IPW_OTH "
         )
@@ -169,6 +169,8 @@ reg[resident_workplace_emp_gap_share_population>=quants[2],
 reg[resident_workplace_emp_gap_share_population<=quants[1], 
     resident_workplace_emp_gap_share_population := quants[1]]
 
+run_lp(reg, "net_outmigration", start_year = 2000, end_year = 2007)
+exit 
 reg[, l_labor_force := shift(labor_force), by = area_fips]
 run_lp(reg, "w_outside_jobs_share_l_labor_force", 
        start_year = 2000, 

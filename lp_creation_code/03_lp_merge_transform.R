@@ -214,6 +214,8 @@ reg[, net_migration_samestate :=
 reg[, net_migration_diffstate :=
       exemptions_2_inflow - exemptions_2_outflow]
 
+reg[, net_outmigration := exemptions_3_outflow / (exemptions_3_outflow + exemptions_3_inflow) * 100]
+
 # Standard contemporaneous denominators
 make_share(reg, "net_migration", "resident_emp")
 make_share(reg, "net_migration", "workplace_emp")
@@ -244,6 +246,8 @@ make_share(reg, "manufac_emp", "resident_emp_2000")
 make_share(reg, "resident_emp", "population")
 make_share(reg, "workplace_emp", "population")
 make_share(reg, "workplace_emp", "resident_emp")
+make_share(reg, "unemployed", "labor_force")
+make_share(reg, "labor_force", "population")
 
 # LODES employment composition
 
@@ -267,35 +271,6 @@ winsor(reg, "IPW_OTH_pop")
 winsor(reg, "resident_workplace_emp_gap")
 winsor(reg, "l_resident_workplace_emp_gap")
 
-# Diagnostics
-# Duplicate county-years?
-reg[, .N, by = .(area_fips, year)][N > 1]
-
-# Sample coverage
-reg[, .(
-  N = .N,
-  counties = uniqueN(area_fips),
-  min_year = min(year, na.rm = TRUE),
-  max_year = max(year, na.rm = TRUE)
-)]
-
-# Missingness in main variables
-reg[, .(
-  miss_mfg =
-    sum(is.na(w_manufac_emp_share_resident_emp)),
-  
-  miss_mfg_pop =
-    sum(is.na(w_manufac_emp_share_population)),
-  
-  miss_US =
-    sum(is.na(w_IPW_US)),
-  
-  miss_OTH =
-    sum(is.na(w_IPW_OTH)),
-  
-  miss_control =
-    sum(is.na(l_shind_manuf))
-)]
 
 # Save
 fwrite(
@@ -305,4 +280,16 @@ fwrite(
 fwrite(
   reg,
   paste0(local, "/output/lp_transformed_reg.csv"))
+  
+county_conditions <- reg[, .(
+  area_fips,
+  year,
+  IPW_US = IPW_US,
+  unemployed_share_labor_force,
+  sh_empl_mfg,
+  labor_force_share_population
+)]
 
+fwrite(
+  county_conditions,
+  paste0(path, "/output/lp_shock_exposure.csv"))
