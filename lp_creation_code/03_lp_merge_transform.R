@@ -140,9 +140,13 @@ irs[, (cols) := lapply(.SD, as.numeric), .SDcols = cols]
 
 irs_detail <- fread(paste0(path, "/irs/lp_irs_destination_conditions_full.csv"))
 irs <- merge(irs, irs_detail, 
-             by.x = c("area_fips", "year"), 
-             by.y = c("home_area_fips", "year"), 
+             by = c("area_fips", "year"), 
              all.x=T)
+
+towin <- setdiff(grep("ew|rw", names(irs) , value = T), grep("share", names(irs), value = T))
+for (i in 1:length(towin)){
+  winsor(irs, towin[i])
+}
 # Merge datasets ---------------------------------------------------------------
 
 reg <- merge(

@@ -27,7 +27,7 @@ run_lp <- function(
     outcome,
     start_year = 2000,
     end_year = 2007,
-    horizons = 0:7,
+    horizons = 0:6,
     figure = TRUE
 ) {
   
@@ -90,7 +90,7 @@ run_lp <- function(
       as.formula(
         paste0(
           var,
-          " ~ l1_y + l2_y + l_shind_manuf |  year | ",
+          " ~ l1_y + l2_y + l_shind_manuf | area_fips +  year | ",
           "w_IPW_US ~ ",
           "w_IPW_OTH "
         )
@@ -168,6 +168,19 @@ reg[resident_workplace_emp_gap_share_population>=quants[2],
     resident_workplace_emp_gap_share_population := quants[2]]
 reg[resident_workplace_emp_gap_share_population<=quants[1], 
     resident_workplace_emp_gap_share_population := quants[1]]
+
+
+run_lp(reg, "ew_share_into_less_exposed",
+       start_year = 2000,
+       end_year = 2007)
+
+
+
+run_lp(reg, "rw_share_from_more_exposed",
+       start_year = 2000,
+       end_year = 2007)
+
+
 
 run_lp(reg, "net_outmigration", start_year = 2000, end_year = 2007)
 exit 

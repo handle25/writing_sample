@@ -32,56 +32,11 @@ path <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data/lodes"
 path <- "D:/writing_sample/data/lodes/clean_lp_full"
 output_dir <- paste0(path, "/new_clean_lp_full")
 
-dir.create(
-  output_dir,
-  showWarnings = FALSE,
-  recursive = TRUE
-)
-
-################################################################################
 # States and years
-################################################################################
-
 states <- tolower(state.abb)
-
-# Run California and Texas separately
-
 years <- 2002:2025
 
-################################################################################
 # Pull and collapse
-################################################################################
-
-
-states <- "al"
-years <- 2003
-for (s in states) {
-  
-  print(paste("Starting state:",s))
-  
-  state_output_file <- paste0(output_dir,"/clean_lp_full_",s,".csv")
-  state_list <- vector("list",length(years))
-  k <- 1
-  
-  for (y in years) {
-    print(paste("Starting:",s,y))
-    year_result <- {
-      
-      lodes <- grab_lodes(
-        state = s,
-        year = y,
-        lodes_type = "od",
-        state_part = "main",
-        download_dir = path
-      )
-      
-      lodes <- as.data.table(lodes)
-      
-    }
-  }
-}
-exit 
-
 
 for (s in states) {
   
@@ -195,10 +150,6 @@ for (s in states) {
      
       outside[, state_str := s]
       
-      ##########################################################################
-      # Clear raw LODES before returning collapsed data
-      ##########################################################################
-      
       rm(lodes)
       
       gc()
@@ -263,7 +214,6 @@ for (s in states) {
 }
 
 # Finished
-
 print("LODES state-level annual pull complete.")
 # Pull and collapse ------------------------------------------------------------
 ## 2000 ------------------------------------------------------------------------

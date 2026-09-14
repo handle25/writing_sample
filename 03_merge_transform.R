@@ -355,11 +355,12 @@ fwrite(
 
 fwrite(reg, paste0(local, "/output/transformed_reg.csv"))
 
-county_conditions <- reg[, .(
-  area_fips,
-  year,
-  IPW_US = w_IPW_US,
-  unemployment_rate,
-  sh_empl_mfg,
-  labor_force_share_population
-)]
+# county conditions ------------------------------------------------------------
+county_conditions <- reg[year %in% c(2007, 2013), .(
+  IPW_US=mean(w_IPW_US, na.rm=T),
+  unemployed_share_labor_force=mean(unemployed_share_labor_force, na.rm=T),
+  sh_empl_mfg=mean(sh_empl_mfg, na.rm=T),
+  labor_force_share_population=mean(labor_force_share_population, na.rm=T)
+), by=area_fips]
+
+fwrite(county_conditions, paste0(path, "/output/shock_exposure.csv"))
