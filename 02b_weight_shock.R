@@ -13,7 +13,7 @@ setwd(path)
 
 # read in country industry level data ------------------------------------------
 # has location area_fips which is county level 
-years_qcew <- c(1990, 1995, 2000, 2007, 2013)
+years_qcew <- c(1990, 1995, 2000, 2007, 2013, 2019 )
 
 qcew_naics3 <- fread(paste0(path, "/qcew/clean/new_full_qcew_1995_2025.csv"))
 qcew_naics3[, area_fips := as.character(area_fips)]
@@ -27,6 +27,17 @@ shock_10yr <- fread(paste0(path, "/output/Delta_M_naics3_1990_2000.csv"))
 # population weights -----------------------------------------------------------
 acs <- fread(paste0(path, "/output/lp_population.csv"))
 acs[,area_fips := as.character(as.integer(area_fips))]
+
+census <- fread(paste0(path, 
+                       "/census/DECENNIALSF12000.P012_2026-09-17T191839/DECENNIALSF12000.P012-Data.csv"), 
+                skip = 1 ) |> clean_names()
+# working-age population, ages 15--64 ------------------------------------------
+wap_cols <- names(census)[c(8:21, 32:45)]
+
+census[, working_age_population := rowSums(.SD, na.rm=TRUE), .SDcols=wap_cols]
+census[, area_fips := as.character(as.integer(substr(geography, nchar(geography)-4, nchar(geography))))]
+census <- census[, .(area_fips, working_age_population)]
+
 # Create QCEW employment weights -----------------------------------------------
 # 1995 employment -> 1995-2000 shock stored at year 2000
 # 2000 employment -> 2000-2007 shock stored at year 2007
@@ -125,6 +136,7 @@ qcew_base <- merge(
   by = c("year", "area_fips"),
   all.x = TRUE
 )
+qcew_base <- merge(qcew_base, census, by = "area_fips", all.x = T)
 
 qcew_base[, baseline_year := year]
 
@@ -170,11 +182,19 @@ qcew_rep[, IPW_US_pop :=
 qcew_rep[, IPW_OTH_pop :=
            (L_ijt / L_ujt) * (Delta_M_OTH / population)]
 
+qcew_rep[, IPW_US_wap :=
+           (L_ijt / L_ujt) * (Delta_M_US / working_age_population)]
+
+qcew_rep[, IPW_OTH_wap :=
+           (L_ijt / L_ujt) * (Delta_M_OTH / working_age_population)]
+
 # scale by 1000 for thousand dollars per worker hour 
 qcew_rep[, IPW_US  := IPW_US / 1000]
 qcew_rep[, IPW_OTH := IPW_OTH / 1000]
 qcew_rep[, IPW_US_pop  := IPW_US_pop / 1000]
 qcew_rep[, IPW_OTH_pop := IPW_OTH_pop / 1000]
+qcew_rep[, IPW_US_wap  := IPW_US_wap / 1000]
+qcew_rep[, IPW_OTH_wap := IPW_OTH_wap / 1000]
 
 # Collapse across industries to county x period
 instrument <- qcew_rep |>
@@ -184,6 +204,8 @@ instrument <- qcew_rep |>
     IPW_OTH = fsum(IPW_OTH), 
     IPW_US_pop  = fsum(IPW_US_pop),
     IPW_OTH_pop = fsum(IPW_OTH_pop), 
+    IPW_US_wap  = fsum(IPW_US_wap),
+    IPW_OTH_wap = fsum(IPW_OTH_wap), 
     industry_hhi = fmean(industry_hhi),
     industry_hhi_nomanufac = fmean(industry_hhi_nomanufac)
   ) |>
@@ -262,7 +284,7 @@ qcew_outcome[, industry_code := as.integer(industry_code)]
 qcew_outcome[,naics2:= floor(as.integer(industry_code/10))]
 
 qcew_outcome <- qcew_outcome[
-  year %in% c(1995, 2000, 2007, 2013)
+  year %in% c(1995, 2000, 2007, 2013, 2019)
 ]
 
 # Total county employment
@@ -336,6 +358,7 @@ base <- merge(
 # save file 
 fwrite(base, paste0(path, "/output/weighted_qcew.csv"))
 
+exit 
 # check regs 2007 --------------------------------------------------------------
 reg <- base[year %in% c(2000, 2007), ]# Period indicator
 reg[, t2 := as.integer(year == 2007)]

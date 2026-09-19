@@ -90,12 +90,24 @@ shock <- fread(paste0(path, "/output/Delta_M_naics3_lp.csv"))
 acs <- fread(paste0(path, "/acs/population_1995_2023.csv"))
 acs[, area_fips := as.character(area_fips)]
 
+census <- fread(paste0(path, 
+                       "/census/DECENNIALSF12000.P012_2026-09-17T191839/DECENNIALSF12000.P012-Data.csv"), 
+                skip = 1 ) |> clean_names()
+# working-age population, ages 15--64 ------------------------------------------
+wap_cols <- names(census)[c(8:21, 32:45)]
+
+census[, working_age_population := rowSums(.SD, na.rm=TRUE), .SDcols=wap_cols]
+census[, area_fips := as.character(as.integer(substr(geography, nchar(geography)-4, nchar(geography))))]
+census <- census[, .(area_fips, working_age_population)]
+
 # Create QCEW employment weights -----------------------------------------------
 # take one base period for now 
 qcew_base <- qcew_naics3[year == 2000,]
 qcew_base <- merge(qcew_base, acs, 
                    by = c("area_fips", "year"), 
                    all.x = TRUE)
+qcew_base <- merge(qcew_base, census, by = "area_fips", all.x = T)
+
 setnames(
   qcew_base,
   c("industry_hhi", "industry_share_sd"),
@@ -118,6 +130,7 @@ qcew_base <- qcew_base |>
     industry_code,
     L_it, L_ijt, L_ujt,
     population,
+    working_age_population,
     industry_hhi_base,
     industry_share_sd_base
   )
@@ -149,6 +162,12 @@ qcew_rep[, IPW_US_pop :=
 qcew_rep[, IPW_OTH_pop :=
            (L_ijt / L_ujt) * (Delta_M_OTH / population)]
 
+qcew_rep[, IPW_US_wap :=
+           (L_ijt / L_ujt) * (Delta_M_US / working_age_population)]
+
+qcew_rep[, IPW_OTH_wap :=
+           (L_ijt / L_ujt) * (Delta_M_OTH / working_age_population)]
+
 qcew_rep[, IPW_US :=
            (L_ijt / L_ujt) * (Delta_M_US / L_it)]
 
@@ -160,7 +179,8 @@ qcew_rep[, IPW_US  := IPW_US / 1000]
 qcew_rep[, IPW_OTH := IPW_OTH / 1000]
 qcew_rep[, IPW_US_pop  := IPW_US_pop / 1000]
 qcew_rep[, IPW_OTH_pop := IPW_OTH_pop / 1000]
-
+qcew_rep[, IPW_US_wap  := IPW_US_wap / 1000]
+qcew_rep[, IPW_OTH_wap := IPW_OTH_wap / 1000]
 
 # Collapse across industries to county x period
 instrument <- qcew_rep |>
@@ -170,6 +190,8 @@ instrument <- qcew_rep |>
     IPW_OTH     = fsum(IPW_OTH, na.rm = TRUE),
     IPW_US_pop  = fsum(IPW_US_pop, na.rm = TRUE),
     IPW_OTH_pop = fsum(IPW_OTH_pop, na.rm = TRUE),
+    IPW_US_wap  = fsum(IPW_US_wap, na.rm = TRUE),
+    IPW_OTH_wap = fsum(IPW_OTH_wap, na.rm = TRUE),
     industry_hhi_base =
       fmean(industry_hhi_base, na.rm = TRUE),
     industry_share_sd_base =
@@ -243,11 +265,9 @@ county_emp[, l_shind_manuf :=
            by = area_fips
 ]
 
-# baseline employment weight as a temporary county analogue
-county_emp[, baseline_emp :=
-             shift(total_emp),
-           by = area_fips
-]
+# fixed 2000 baseline employment weight
+emp_2000 <- county_emp[year == 2000, .(area_fips, baseline_emp = total_emp)]
+county_emp <- merge(county_emp, emp_2000, by="area_fips", all.x=TRUE)
 
 # Regressions ------------------------------------------------------------------
 # Merge onto the two-period instrument

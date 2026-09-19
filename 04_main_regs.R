@@ -14,10 +14,9 @@ winsor <- function(dt, var, p = 0.01) {
   
   dt[, (w_var) := pmin(pmax(get(var), q[1]), q[2])]
 }
-winsor(reg, "outside_jobs_share_labor_force")
+
 setorder(reg, area_fips, year)
-reg[, l_labor_force := shift(labor_force), by = area_fips]
-reg[, l_labor_force := shift(labor_force), by = area_fips]
+
 reg07 <- reg[year %in% c(2000, 2007)]
 reg13 <- reg[year %in% c(2007, 2013)]
 reg25 <- reg[year %in% c(2019, 2025)]
@@ -25,223 +24,67 @@ reg25 <- reg[year %in% c(2019, 2025)]
 reg07[, t2 := as.integer(year == 2007)]
 reg13[, t2 := as.integer(year == 2013)]
 reg25[, t2 := as.integer(year == 2025)]
-################################################################################
+
+reg19 <- reg[year %in% c(2013, 2019)]
+reg19[, `:=`(
+  lag_IPW_US = w_IPW_US[year == 2013][1],
+  lag_IPW_OTH = w_IPW_OTH[year == 2013][1]
+), by=area_fips]
+
 # Variable labels
-################################################################################
-
 names_dict <- c(
+  # Regressors ----------------------------------------------------------------
+  "fit_IPW_US" = "Import Exposure",
+  "w_fit_IPW_US" = "Import Exposure",
+  "w_fit_IPW_US_wap" = "Import Exposure",
+  "w_IPW_US" = "Import Exposure",
+  "w_IPW_US_wap" = "Import Exposure",
+  "w_IPW_US_10yr" = "Import Exposure",
+  "t2" = "Period 2",
   
-  # Regressors -----------------------------------------------------------------
+  # Manufacturing / income ----------------------------------------------------
+  "d_sh_empl_mfg" = "$\\Delta \\frac{Manufacturing}{Employment}$",
+  "d_ln_agi_per_return" = "$\\Delta \\log(AGI\\ per\\ Return)$",
   
-  "fit_IPW_US" =
-    "Import Exposure",
-  "w_fit_IPW_US" =
-    "Import Exposure",
-  "w_IPW_US_10yr" =
-    "Import Exposure",
-  
-  "w_IPW_US" =
-    "Import Exposure",
-  
-  "t2" =
-    "Period 2",
-  
-  "l_shind_manuf" =
-    "Lagged Manufacturing Share",
-  
-  
-  # Services -------------------------------------------------------------------
-  
-  "w_d_total_servc_jobs_share_resident_emp" =
-    "$\\Delta \\frac{Emp_{resident, service}}{Emp_{resident}}$",
-  
-  "w_d_outside_servc_jobs_share_outside_jobs" =
-    "$\\Delta \\frac{Emp_{outside, service}}{Emp_{outside}}$",
-  
-  "w_d_outside_servc_jobs_share_total_servc_jobs" =
-    "$\\Delta \\frac{Emp_{outside, service}}{Emp_{resident, service}}$",
-  
-  "w_d_outside_servc_jobs_share_resident_emp" =
-    "$\\Delta \\frac{Emp_{outside, service}}{Emp_{resident}}$",
-  
-  "w_d_outside_servc_jobs_share_population" =
-    "$\\Delta \\frac{Emp_{outside, service}}{Population}$",
-  
-  "w_d_servc_jobs_share_population" =
-    "$\\Delta \\frac{Emp_{resident, service}}{Population}$",
-  
-  
-  # Goods ----------------------------------------------------------------------
-  
-  "w_d_total_goods_jobs_share_resident_emp" =
-    "$\\Delta \\frac{Emp_{resident, goods}}{Emp_{resident}}$",
-  
-  "w_d_outside_goods_jobs_share_outside_jobs" =
-    "$\\Delta \\frac{Emp_{outside, goods}}{Emp_{outside}}$",
-  
-  "w_d_outside_goods_jobs_share_total_goods_jobs" =
-    "$\\Delta \\frac{Emp_{outside, goods}}{Emp_{resident, goods}}$",
-  
-  "w_d_outside_goods_jobs_share_resident_emp" =
-    "$\\Delta \\frac{Emp_{outside, goods}}{Emp_{resident}}$",
-  
-  "w_d_outside_goods_jobs_share_population" =
-    "$\\Delta \\frac{Emp_{outside, goods}}{Population}$",
-  
-  
-  # Outside employment ---------------------------------------------------------
-  
-  "w_d_outside_jobs_share_resident_emp" =
-    "$\\Delta \\frac{Emp_{outside}}{Emp_{resident}}$",
-  
-  "w_d_outside_jobs_share_total_goods_jobs" =
-    "$\\Delta \\frac{Emp_{outside}}{Emp_{resident, goods}}$",
-  
+  # Commuting -----------------------------------------------------------------
+  "w_d_outside_jobs_share_labor_force" =
+    "$\\Delta \\frac{Outside\\ Jobs}{Labor\\ Force}$",
   "w_d_outside_jobs_share_population" =
-    "$\\Delta \\frac{Emp_{outside}}{Population}$",
+    "$\\Delta \\frac{Outside\\ Jobs}{Population}$",
   
+  # Migration -----------------------------------------------------------------
+  "w_d_returns_3_outflow_share_returns" =
+    "$\\Delta \\frac{Migration^{Out}_{Returns}}{Nonmigrant\\ Returns}$",
+  "w_d_returns_3_outflow_share_population" =
+    "$\\Delta \\frac{Migration^{Out}_{Returns}}{Population}$",
+  "w_d_exemptions_3_outflow_share_exemptions" =
+    "$\\Delta \\frac{Migration^{Out}_{Exemptions}}{Nonmigrant\\ Exemptions}$",
+  "w_d_returns_3_outflow_share_returns_migration" =
+    "$\\Delta \\frac{Migration^{Out}_{Returns}}{Migration^{Out}_{Returns}+Migration^{In}_{Returns}}$",
+  "w_d_exemptions_3_outflow_share_exemptions_migration" =
+    "$\\Delta \\frac{Migration^{Out}_{Exemptions}}{Migration^{Out}_{Exemptions}+Migration^{In}_{Exemptions}}$",
   
-  # Employment / population ----------------------------------------------------
-  
-  "w_d_resident_emp_share_population" =
-    "$\\Delta \\frac{Emp_{resident}}{Population}$",
-  
-  "w_d_workplace_emp_share_population" =
-    "$\\Delta \\frac{Emp_{workplace}}{Population}$",
-  
-  # Migration ------------------------------------------------------------------
-  
-  
-  "w_net_migration_share_resident_emp" =
-    "$\\frac{Net\\ Migration}{Emp_{resident}}$",
-  
-  
-  # Earnings groups: outside employment / outside employment ------------------
-  
-  "w_d_outside_earn1250_jobs_share_outside_jobs" =
-    "$\\Delta \\frac{Emp_{outside, low}}{Emp_{outside}}$",
-  
-  "w_d_outside_earn1251_3333_jobs_share_outside_jobs" =
-    "$\\Delta \\frac{Emp_{outside, mid}}{Emp_{outside}}$",
-  
-  "w_d_outside_earn3333_jobs_share_outside_jobs" =
-    "$\\Delta \\frac{Emp_{outside, high}}{Emp_{outside}}$",
-  
-  
-  # Earnings groups: outside employment / resident employment -----------------
-  
-  "w_d_outside_earn1250_jobs_share_resident_emp" =
-    "$\\Delta \\frac{Emp_{outside, low}}{Emp_{resident}}$",
-  
-  "w_d_outside_earn1251_3333_jobs_share_resident_emp" =
-    "$\\Delta \\frac{Emp_{outside, mid}}{Emp_{resident}}$",
-  
-  "w_d_outside_earn3333_jobs_share_resident_emp" =
-    "$\\Delta \\frac{Emp_{outside, high}}{Emp_{resident}}$",
-  
-  
-  # Earnings groups: outside employment / population --------------------------
-  
-  "w_d_outside_earn1250_jobs_share_population" =
-    "$\\Delta \\frac{Emp_{outside, low}}{Population}$",
-  
-  "w_d_outside_earn1251_3333_jobs_share_population" =
-    "$\\Delta \\frac{Emp_{outside, mid}}{Population}$",
-  
-  "w_d_outside_earn3333_jobs_share_population" =
-    "$\\Delta \\frac{Emp_{outside, high}}{Population}$",
-  
-  
-  # Total resident earnings groups / outside employment -----------------------
-  
-  "w_d_total_earn1250_jobs_share_outside_jobs" =
-    "$\\Delta \\frac{Emp_{resident, low}}{Emp_{outside}}$",
-  
-  "w_d_total_earn1251_3333_jobs_share_outside_jobs" =
-    "$\\Delta \\frac{Emp_{resident, mid}}{Emp_{outside}}$",
-  
-  "w_d_total_earn3333_jobs_share_outside_jobs" =
-    "$\\Delta \\frac{Emp_{resident, high}}{Emp_{outside}}$",
-  
-  "w_d_outside_earn3333_jobs_share_workplace_emp" =
-    "$\\Delta \\frac{Emp_{resident, high}}{Jobs_{local}}$", 
-  
-  "d_workplace_emp_share_resident_emp" = 
-    "$\\Delta \\frac{Jobs_{local}}{Jobs_{resident}}$",
-  
-  "net_migration" =
-    "$Net\\ Migration$",
-  
-  
-  "w_net_migration_share_resident_emp" =
-    "$\\frac{Net\\ Migration}{Emp_{resident}}$",
-  
-  "d_sh_empl_mfg" =
-    "$\\Delta \\frac{Manufacturing}{Employment}$",
-  
-  "w_net_migration_share_workplace_emp" =
-    "$\\frac{Net\\ Migration}{Emp_{workplace}}$",
-  
-  "w_net_migration_share_population_t" =
-    "$\\frac{Net\\ Migration}{Population_{t0}}$",
-  
-  "net_migration" =
-    "$Net\\ Migration$",
-  
-  "net_migration_share_resident_emp" =
-    "$\\frac{Net\\ Migration}{Emp_{resident}}$",
-  
-  "net_migration_share_workplace_emp" =
-    "$\\frac{Net\\ Migration}{Emp_{workplace}}$",
-  
-  "net_migration_share_population" =
-    "$\\frac{Net\\ Migration}{Population}$", 
-  
-  "l_y" = "Lagged Dep Var", 
-  "w_d_labor_force_share_population"= 
+  # Labor market --------------------------------------------------------------
+  "w_d_labor_force_share_population" =
     "$\\Delta \\frac{Labor\\ Force}{Population}$",
-  
-  "w_d_unemployed_share_labor_force"= 
+  "w_d_unemployed_share_labor_force" =
     "$\\Delta \\frac{Unemployed}{Labor\\ Force}$",
+  # Migration -------------------------------------------------------------------
+  "w_d_returns_3_outflow_share_returns" =
+    "$\\Delta \\frac{Migration^{Out}_{Returns}}{Nonmigrant\\ Returns}$",
+  "w_d_exemptions_3_outflow_share_exemptions" =
+    "$\\Delta \\frac{Migration^{Out}_{Exemptions}}{Nonmigrant\\ Exemptions}$",
   
-  "w_d_unemployed_share_l_labor_force"= 
-    "$\\Delta \\frac{Unemployed}{Labor\\ Force_t0}$",
+  "w_d_returns_3_outflow_share_returns_migration" =
+    "$\\Delta \\frac{Migration^{Out}_{Returns}}{Migration^{Out}_{Returns}+Migration^{In}_{Returns}}$",
+  "w_d_exemptions_3_outflow_share_exemptions_migration" =
+    "$\\Delta \\frac{Migration^{Out}_{Exemptions}}{Migration^{Out}_{Exemptions}+Migration^{In}_{Exemptions}}$",
   
-  "w_net_migration_share_population_2000"= 
-    "$ \\frac{Net\\ Migration}{Population_{2000}}$",
-  
-  "w_net_migration_share_population_base_year"= 
-    "$ \\frac{Net\\ Migration}{Population_{t0}}$",
-  
-  "w_d_outside_jobs_share_population"= 
-    "$\\Delta \\frac{Outside\\ Jobs}{Population_{t}}$",
-  "w_d_outside_jobs_share_labor_force" =
-    "$\\Delta \\frac{Outside\\ Jobs}{Labor\\ Force_{t}}$",
-  
-  "w_d_outside_jobs_share_labor_force" =
-    "$\\Delta\\frac{Outside\\ Jobs}{Labor\\ Force_{t}}$",
-  
-  "w_net_migration_share_population_t" =
-    "$\\Delta\\frac{Net\\ Migration}{Population_{t0}}$", 
-  
-  "w_d_unemployment_rate" =
-    "$\\Delta\\frac{Unemployed}{Labor\\ Force_{t}}$",
-  "d_unemployment_rate" =
-    "$\\Delta\\frac{Unemployed}{Labor\\ Force_{t}}$",
-  
-  "d_lfp" =
-    "$\\Delta\\frac{Labor Force}{Population_{t}}$",
-  "w_d_lfp" =
-    "$\\Delta\\frac{Labor Force}{Population_{t}}$", 
-  
-  "w_d_net_outmigration" =
-    "$\\Delta\\frac{Migration^{Out}_{it}}{\\sum Migration_{it}}$",
-  
-  "w_d_unemployed_share_labor_force_t0"= 
-    "$\\Delta \\frac{Unemployed}{Labor\\ Force_t0}$"
-  
+  "w_d_exemptions_net_migration_share_population" =
+    "$\\Delta \\frac{Migration^{In}_{Exemptions}-Migration^{Out}_{Exemptions}}{Population}$",
+  "w_d_returns_net_migration_share_population" =
+    "$\\Delta \\frac{Migration^{In}_{Returns}-Migration^{Out}_{Returns}}{Population}$"
 )
-
 
 ################################################################################
 # Baseline models
@@ -252,7 +95,8 @@ baseline <- function(
     dep_vars,
     desc,
     shock_us = "w_IPW_US",
-    shock_oth = "w_IPW_OTH"
+    shock_oth = "w_IPW_OTH", 
+    drop = c("Constant", "sh_popfborn", "sh_popedu_c", "l_sh_empl_mfg","sh_empl_f")
 ) {
   
   reg <- reg07 
@@ -286,7 +130,7 @@ baseline <- function(
   mods07_ctl <- lapply(dep_vars, function(y) {
     
     fml <- as.formula(
-      paste0(y, " ~  t2  + l_sh_empl_mfg + sh_popfborn + sh_popedu_c + sh_empl_f + l_labor_force", " | ", shock_us, " ~ ", shock_oth)
+      paste0(y, " ~  t2  + l_sh_empl_mfg + sh_popfborn + sh_popedu_c + sh_empl_f ", " | ", shock_us, " ~ ", shock_oth)
     )
     feols(
       fml,
@@ -325,7 +169,7 @@ baseline <- function(
   mods13_ctl <- lapply(dep_vars, function(y) {
     reg[, t2 := as.integer(year == 2013)]
     fml <- as.formula(
-      paste0(y, " ~  t2  + l_sh_empl_mfg + sh_popfborn + sh_popedu_c + sh_empl_f + l_labor_force ", " | ", shock_us, " ~ ", shock_oth)
+      paste0(y, " ~  t2  + l_sh_empl_mfg + sh_popfborn + sh_popedu_c + sh_empl_f  ", " | ", shock_us, " ~ ", shock_oth)
     )
     feols(
       fml,
@@ -335,6 +179,43 @@ baseline <- function(
     )
   })
   
+    
+    reg <- reg19
+    mods19 <- lapply(dep_vars, function(y) {
+      
+      fml <- as.formula(
+        paste0(y, " ~  1  ", " | lag_IPW_US ~ lag_IPW_OTH")
+      )
+      feols(
+        fml,
+        data = reg[year %in% c(2019)],
+        weights = ~baseline_emp,
+        cluster = ~statefip
+      )
+    })
+    mods19_lsh <- lapply(dep_vars, function(y) {
+      fml <- as.formula(
+        paste0(y, " ~  1+  l_sh_empl_mfg | lag_IPW_US ~ lag_IPW_OTH")
+      )
+      feols(
+        fml,
+        data = reg[year %in% c(2019, 2019)],
+        weights = ~baseline_emp,
+        cluster = ~statefip
+      )
+    })
+    mods19_ctl <- lapply(dep_vars, function(y) {
+      fml <- as.formula(
+        paste0(y, " ~ 1 +  l_sh_empl_mfg + sh_popfborn + sh_popedu_c + sh_empl_f | lag_IPW_US ~ lag_IPW_OTH")
+      )
+      feols(
+        fml,
+        data = reg[year %in% c(2019, 2019)],
+        weights = ~baseline_emp,
+        cluster = ~statefip
+      )
+    })
+  
   mods <- c(mods07_ctl, mods13_ctl)
   names(mods) <- c(dep_vars, dep_vars)
   file <- paste0(path, "/../figures/final_", desc, date, ".tex")
@@ -342,9 +223,9 @@ baseline <- function(
   etable(
     mods,
     dict = names_dict,
-    drop = c("Constant", "sh_popfborn", "sh_popedu_c", "l_sh_empl_mfg","sh_empl_f"),
+    drop = drop, 
     extralines = list(
-      "\\midrule Baseline manufacturing share" = c( "$\\checkmark$", "$\\checkmark$"),
+      "\\midrule Baseline manufacturing share" = c("$\\checkmark$", "$\\checkmark$"),
       "Baseline demographic controls " = c("$\\checkmark$", "$\\checkmark$")
     ),
     digits = 3,
@@ -370,7 +251,7 @@ baseline <- function(
   x <- x[!grepl("standard-errors in parentheses", x)]
   x <- x[!grepl("Signif\\. Codes", x)]
   
-  i <- grep("2000--2007.*2007--2013", x)
+  i <- grep("2000--2007.*2013", x)
   x <- append(x, "\\midrule", after = i+1)
   
   writeLines(x, file)
@@ -385,10 +266,14 @@ baseline <- function(
   etable(
     mods,
     dict = names_dict,
-    drop = c("Constant", "sh_popfborn", "sh_popedu_c", "l_sh_empl_mfg","sh_empl_f"),
+    drop = drop,
     extralines = list(
-      "\\midrule Baseline manufacturing share" = c( "", "$\\checkmark$","$\\checkmark$","", "$\\checkmark$", "$\\checkmark$"),
-      "Baseline demographic controls " = c( "","", "$\\checkmark$","","",  "$\\checkmark$")
+      "\\midrule Baseline manufacturing share" =
+        c("", "$\\checkmark$", "$\\checkmark$",
+          "", "$\\checkmark$", "$\\checkmark$"),
+      "Baseline demographic controls " =
+        c("", "", "$\\checkmark$",
+          "", "", "$\\checkmark$")
     ),
     digits = 3,
     style.tex = style.tex(
@@ -414,7 +299,7 @@ baseline <- function(
   x <- x[!grepl("standard-errors in parentheses", x)]
   x <- x[!grepl("Signif\\. Codes", x)]
   
-  i <- grep("2000--2007.*2007--2013", x)
+  i <- grep("2000--2007.*2013", x)
   x <- append(x, "\\cmidrule(lr){2-4}\\cmidrule(lr){5-7}", after = i)
   x <- append(x, "\\midrule", after = i+2)
   
@@ -429,13 +314,78 @@ baseline(
   "d_sh_empl_mfg"
 )
 
+baseline(
+  "d_sh_empl_mfg",
+  "d_sh_empl_mfg", 
+  shock_us = "w_IPW_US_wap",
+  shock_oth = "w_IPW_OTH_wap"
+)
+
+baseline(
+
+  "d_ln_agi_per_return",
+  "d_ln_agi_per_return"
+)
+
+
 # second figure ----------------------------------------------------------------
 
 baseline(
-  "w_outside_jobs_share_labor_force",
-  "w_outside_jobs_share_labor_force"
+  "w_d_outside_jobs_share_labor_force",
+  "w_d_outside_jobs_share_labor_force",
+  shock_us = "w_IPW_US_10yr",
+  shock_oth = "w_IPW_OTH_10yr"
 )
 
+baseline(
+  "w_d_outside_jobs_share_population",
+  "w_d_outside_jobs_share_population",
+  shock_us = "w_IPW_US_10yr",
+  shock_oth = "w_IPW_OTH_10yr"
+)
+
+# third figure -----------------------------------------------------------------
+baseline(
+  "w_d_returns_3_outflow_share_returns",
+  "w_d_returns_3_outflow_share_returns"
+)
+
+baseline(
+  "w_d_exemptions_3_outflow_share_exemptions_migration",
+  "w_d_exemptions_3_outflow_share_exemptions_migration"
+)
+baseline(
+  "w_d_exemptions_3_outflow_share_exemptions",
+  "w_d_exemptions_3_outflow_share_exemptions"
+)
+
+# Net migration / population ---------------------------------------------------
+baseline(
+  "w_d_exemptions_net_migration_share_population",
+  "w_d_exemptions_net_migration_share_population"
+)
+baseline(
+  "w_d_exemptions_net_migration_share_exemptions",
+  "w_d_exemptions_net_migration_share_exemptions"
+)
+baseline(
+  "w_d_returns_net_migration_share_population",
+  "w_d_returns_net_migration_share_population"
+)
+
+# Flows / Migration -------------- ---------------------------------------------
+baseline(
+  "w_d_returns_3_outflow_share_returns_migration",
+  "w_d_returns_3_outflow_share_returns_migration"
+)
+
+baseline(
+  "w_d_exemptions_3_outflow_share_exemptions_migration",
+  "w_d_exemptions_3_outflow_share_exemptions_migration"
+)
+
+
+# Labor force ------------------------------------------------------------------
 baseline(
   "w_d_labor_force_share_population",
   "w_d_labor_force_share_population"
@@ -445,25 +395,4 @@ baseline(
   "w_d_unemployed_share_labor_force",
   "w_d_unemployed_share_labor_force"
 )
-
-baseline(
-  "w_d_unemployed_share_labor_force_t0",
-  "w_d_unemployed_share_labor_force_t0"
-)
-
-baseline(
-  "w_d_outside_jobs_share_labor_force_t0",
-  "w_d_outside_jobs_share_labor_force_t0"
-)
-
-baseline(
-  "w_d_outside_jobs_share_population",
-  "w_d_outside_jobs_share_population"
-)
-
-baseline(
-  "w_d_net_outmigration",
-  "w_d_net_outmigration"
-)
-
 

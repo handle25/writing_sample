@@ -19,137 +19,101 @@ figs <- "D:/writing_sample/figures"
 local <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
 
 reg <- fread(paste0(path, "/output/lp_transformed_reg.csv"))
-
-setwd(path)
-# function definition ----------------------------------------------------------
-run_lp <- function(
-    reg,
-    outcome,
-    start_year = 2000,
-    end_year = 2007,
-    horizons = 0:6,
-    figure = TRUE
-) {
+winsor <- function(dt, var, p = 0.01) {
   
-  # Keep balanced panel
-  reg <- reg[!is.na(get(outcome)) & year <= end_year + horizons[length(horizons)]]
-  reg <- reg[
-    area_fips %in%
-      reg[, .N, by = area_fips][
-        N == length(unique(reg$year)),
-        area_fips
-      ]
-  ]
-  
-  setorder(reg, area_fips, year)
-  
-  base <- outcome
-  
-  # Construct outcome used in LP
-  reg[, y_lp := get(base)]
-  
-  # Lagged outcome controls
-  reg[, l1_y := shift(y_lp, 1), by = area_fips]
-  reg[, l2_y := shift(y_lp, 2), by = area_fips]
-  reg[, l3_y := shift(y_lp, 3), by = area_fips]
-  reg[, l4_y := shift(y_lp, 4), by = area_fips]
-  reg[, l5_y := shift(y_lp, 5), by = area_fips]
-  reg[, l6_y := shift(y_lp, 6), by = area_fips]
-  
-  
-  reg[, l1_US  := shift(w_IPW_US,  1), by = area_fips]
-  reg[, l2_US  := shift(w_IPW_US,  2), by = area_fips]
-  
-  reg[, l1_OTH := shift(w_IPW_OTH, 1), by = area_fips]
-  reg[, l2_OTH := shift(w_IPW_OTH, 2), by = area_fips]
-  
-  # LP outcomes
-  for (h in horizons) {
-    
-    var <- paste0("diff_", h)
-    
-    reg[, (var) :=
-          shift(y_lp, type = "lead", n = h) -
-          shift(y_lp, type = "lag", n = 1),
-        by = area_fips]
-  }
-  
-  # Store results
-  results <- data.table(
-    h = horizons,
-    coef = NA_real_,
-    se = NA_real_
+  q <- quantile(
+    dt[[var]],
+    probs = c(p, 1 - p),
+    na.rm = TRUE
   )
   
-  # Run LPs
+  w_var <- paste0("w_", var)
+  
+  dt[, (w_var) := pmin(
+    pmax(get(var), q[1]),
+    q[2]
+  )]
+}
+setwd(path)
+# function definition ----------------------------------------------------------
+# function definition ----------------------------------------------------------
+run_lp <- function(
+    reg, 
+    outcome, 
+    controls = "",
+    start_year=2000, 
+    end_year=2007, 
+    horizons=0:7, 
+    figure=TRUE,
+    shock = "w_IPW_US",
+    instrument = "w_IPW_OTH"
+) {
+  reg <- copy(reg)
+  reg <- reg[!is.na(get(outcome)) & year <= end_year + max(horizons)]
+  reg <- reg[area_fips %in% reg[, .N, by=area_fips][N == length(unique(reg$year)), area_fips]]
+  setorder(reg, area_fips, year)
+  
+  reg[, y_lp := get(outcome)]
+  reg[, l1_y := shift(y_lp), by=area_fips]
+  reg[, l2_y := shift(y_lp, 2), by=area_fips]
+  reg[, l_sh_empl_mfg := shift(sh_empl_mfg), by=area_fips]
+  
+  for (h in horizons) {
+    var <- paste0("diff_", h)
+    reg[, (var) := shift(y_lp, type="lead", n=h) - l1_y]
+  }
+  
+  reg_est <- reg[year %in% start_year:end_year]
+  
+  for (h in horizons) winsor(reg_est, paste0("diff_", h))
+  results <- data.table(h=horizons, coef=NA_real_, se=NA_real_)
+  
   for (hh in horizons) {
-    
-    var <- paste0("diff_", hh)
+    var <- paste0("w_diff_", hh)
     
     mod <- feols(
-      as.formula(
-        paste0(
-          var,
-          " ~ l1_y + l2_y + l_shind_manuf | area_fips +  year | ",
-          "w_IPW_US ~ ",
-          "w_IPW_OTH "
-        )
-      ),
-      data = reg[year %in% start_year:end_year],
-      cluster = ~area_fips,
-      weights = ~baseline_emp
+      as.formula(paste0(
+        var,
+        " ~ l1_y + l2_y + l_sh_empl_mfg", controls,
+        " | area_fips + year | ",
+        shock, " ~ ", instrument
+      )),
+      data=reg_est,
+      cluster=~area_fips,
+      weights=~baseline_emp
     )
     
-    print(summary(mod))
+    fit_shock <- paste0("fit_", shock)
     
     results[h == hh, `:=`(
-      coef = coef(mod)["fit_w_IPW_US"],
-      se   = se(mod)["fit_w_IPW_US"]
+      coef=coef(mod)[fit_shock],
+      se=se(mod)[fit_shock]
     )]
   }
   
-  # Confidence intervals
   results[, `:=`(
-    lower90 = coef - 1.64 * se,
-    upper90 = coef + 1.64 * se,
-    lower95 = coef - 1.96 * se,
-    upper95 = coef + 1.96 * se
+    lower90=coef - 1.64*se,
+    upper90=coef + 1.64*se,
+    lower95=coef - 1.96*se,
+    upper95=coef + 1.96*se
   )]
   
-  # Plot
   if (figure) {
-    
-    p <- ggplot(results, aes(x = h, y = coef)) +
-      geom_ribbon(
-        aes(ymin = lower95, ymax = upper95),
-        alpha = 0.2
-      ) +
-      geom_ribbon(
-        aes(ymin = lower90, ymax = upper90),
-        alpha = 0.5
-      ) +
-      geom_line() +
-      geom_point() +
-      geom_hline(
-        yintercept = 0,
-        linetype = "dashed"
-      ) +
-      scale_x_continuous(
-        breaks = horizons
-      ) +
+    p <- ggplot(results, aes(h, coef)) +
+      geom_ribbon(aes(ymin=lower95, ymax=upper95), alpha=.2) +
+      geom_ribbon(aes(ymin=lower90, ymax=upper90), alpha=.5) +
+      geom_line() + geom_point() +
+      geom_hline(yintercept=0, linetype="dashed") +
+      scale_x_continuous(breaks=horizons) +
       theme_bw()
     
-    ggsave(
-      paste0(figs, "/baseline_lp_", base, date, ".pdf"),
-      p,
-      height = 4,
-      width = 4
-    ) 
-    
+    ggsave(paste0(figs, "/baseline_lp_", outcome, "_", shock, "_", date, ".pdf"), p, height=4, width=4)
+    print(p)
   }
+  
   return(results)
-  show(p)
 }
+
 
 state_crosswalk <- data.table(
   state = c(
@@ -161,184 +125,35 @@ state_crosswalk <- data.table(
   region = state.region,
   division = state.division
 )
+# destination-condition LPs ----------------------------------------------------
+reg[, outside_jobs_share_returns := outside_jobs / returns]
+winsor(reg, "outside_jobs_share_returns")
 
-reg[,resident_workplace_emp_gap_share_population := resident_workplace_emp_gap/workplace_emp]
-quants <- quantile(reg[,resident_workplace_emp_gap_share_population], probs = c(.01,.99), na.rm = T)
-reg[resident_workplace_emp_gap_share_population>=quants[2], 
-    resident_workplace_emp_gap_share_population := quants[2]]
-reg[resident_workplace_emp_gap_share_population<=quants[1], 
-    resident_workplace_emp_gap_share_population := quants[1]]
+run_lp(reg, "ew_share_into_less_unemp", start_year=2000, end_year=2007)
+run_lp(reg, "ew_share_into_less_unemp", start_year=2000, end_year=2007, 
+       controls = "+fn_mean_dest_IPW_US")
+run_lp(reg, "ew_share_into_less_exposed", start_year=2000, end_year=2007,
+       controls = "+fn_mean_dest_IPW_US")
 
+# main outcomes ---------------------------------------------------------------
+reg[, outside_jobs_share_returns := outside_jobs / returns ]
+# Labor market
+run_lp(reg, "labor_force_share_population", start_year=2000, end_year=2007,
+       controls = "+ex_mean_dest_IPW_US")
+run_lp(reg, "unemployed_share_labor_force", start_year=2000, end_year=2007)
 
-run_lp(reg, "ew_share_into_less_exposed",
-       start_year = 2000,
-       end_year = 2007)
+# Commuting
+run_lp(reg, "outside_jobs_share_population", start_year=2000, end_year=2007)
+run_lp(reg, "outside_jobs_share_labor_force", start_year=2000, end_year=2007)
+run_lp(reg, "w_outside_jobs_share_returns", start_year=2000, end_year=2007)
 
+# Migration
+run_lp(reg, "exemptions_net_migration_share_population", start_year=2000, end_year=2007)
+run_lp(reg, "exemptions_3_outflow_share_exemptions_total_migration", start_year=2000, end_year=2007)
 
+# Destination of migration
+run_lp(reg, "ew_share_into_less_unemp", start_year=2000, end_year=2007)
+run_lp(reg, "ew_share_into_less_exposed", start_year=2000, end_year=2007)
 
-run_lp(reg, "rw_share_from_more_exposed",
-       start_year = 2000,
-       end_year = 2007)
-
-
-
-run_lp(reg, "net_outmigration", start_year = 2000, end_year = 2007)
-exit 
-reg[, l_labor_force := shift(labor_force), by = area_fips]
-run_lp(reg, "w_outside_jobs_share_l_labor_force", 
-       start_year = 2000, 
-       end_year = 2007)
-
-
-run_lp(reg, "resident_workplace_emp_gap_share_population", 
-       start_year = 2000, 
-       end_year = 2007)
-
-reg[,l_workplace_emp := log(workplace_emp)]
-run_lp(reg, "l_workplace_emp", 
-       start_year = 2000, 
-       end_year = 2007)
-
-run_lp(reg, "w_outside_jobs_share_population_2000", start_year = 2002, 
-       end_year = 2007)
-
-run_lp(reg, "w_outside_jobs_share_population", start_year = 2002, 
-       end_year = 2007)
-
-
-run_lp(reg, "w_net_migration_share_population", 
-       start_year = 2007, 
-       end_year = 2015)
-
-reg[, d_outside_jobs_share_population := 
-      outside_jobs_share_population - shift(
-        outside_jobs_share_population, type = "lag", n = 1
-      ), by = .(area_fips)]
-
-ggplot(data = reg[year == 2007], aes(
-  x = d_outside_jobs_share_population, 
-  y = w_IPW_US
-))+ 
-  geom_point()
-
-
-run_lp(reg, "resident_emp_share_population")
-run_lp(reg, "w_net_migration_share_population_t_1")
-
-run_lp(reg, "w_manufac_emp_share_population")
-
-run_lp(reg, "sh_empl_mfg")
-run_lp(reg, "sh_empl_mfg")
-
-
-
-
-reg[,test := log(resident_emp)]
-reg[, total_jobs := total_goods_jobs + total_servc_jobs + total_trade_jobs]
-# reg <- reg[year %in% c(2007:2017), ]
-# begin regressions ------------------------------------------------------------
-base_t0 <- "total_goods_jobs_share_resident_emp"
-
-# w_outside_earn3333_jobs_share_resident_emp 
-significant <- c(
-  "w_outside_jobs_share_resident_emp",
-  "w_outside_servc_jobs_share_resident_emp",
-  "w_outside_goods_jobs_share_resident_emp",
-  "w_outside_jobs_share_population",
-  "w_total_goods_jobs_share_resident_emp",
-  "w_manuf_share_emp",
-  "w_manuf_emp_share_pop"
-)
-
-# significant <- c("net_migration_share_population")
-
-dep_vars <- c(
-  
-  # Services / commuting
-  "w_d_outside_servc_jobs_share_total_servc_jobs",
-  "w_d_outside_servc_jobs_share_resident_emp",
-  "w_d_outside_jobs_share_resident_emp",
-  
-  # Services overall
-  "w_d_total_servc_jobs_share_resident_emp",
-  
-  # Employment / population
-  "w_d_resident_emp_share_population",
-  "w_d_workplace_emp_share_population",
-  
-  # High-earning outside employment
-  "w_d_outside_earn3333_jobs_share_resident_emp",
-  "w_d_outside_earn3333_jobs_share_outside_jobs",
-  "w_d_outside_earn3333_jobs_share_workplace_emp"
-)
-
-run_lp(reg, "net_migration_share_population_t_1")
-
-
-# keep constant sample 
-reg <- reg[
-  area_fips %in% reg[, .N, by = area_fips][N == length(unique(reg[,year])), area_fips]
-]
-
-results <- run_lp(
-  reg,
-  "industry_hhi"
-)
-
-q99 <- quantile(reg[,industry_hhi] , probs = .99, na.rm = T)
-q01 <- quantile(reg[,industry_hhi] , probs = .01, na.rm = T)
-
-reg[industry_hhi < q01, industry_hhi := q01]
-reg[industry_hhi > q99, industry_hhi := q99]
-results <- run_lp(
-  reg,
-  "industry_hhi"
-)
-
-results <- run_lp(
-  reg,
-  "industry_hhi_nomanufac"
-)
-
-
-run_lp(reg, "w_d_outside_servc_jobs_share_resident_emp")
-
-# reg[, w_outside_jobs_share_resident_emp := log(w_outside_jobs_share_resident_emp)]
-results <- run_lp(
-  reg,
-  "w_outside_jobs_share_resident_emp"
-)
-
-q99 <- quantile(reg[,industry_hhi] , probs = .99, na.rm = T)
-q01 <- quantile(reg[,industry_hhi] , probs = .01, na.rm = T)
-
-reg[industry_hhi < q01, industry_hhi := q01]
-reg[industry_hhi > q99, industry_hhi := q99]
-results <- run_lp(
-  reg,
-  "industry_hhi"
-)
-
-     
-results_migration <- run_lp(
-  reg = reg,
-  "net_migration_share_population_t_1"
-)
-
-
-results_migration <- run_lp(
-  reg = reg,
-  "w_manuf_share_emp"
-)
-
-results_migration <- run_lp(
-  reg = reg,
-  "w_manuf_emp_share_pop"
-)
-
-
-reg[, mean_travel_time_to_work_minutes := log(mean_travel_time_to_work_minutes)]
-results <- run_lp(
-  reg = reg,
-  "mean_travel_time_to_work_minutes"
-)
+# Income
+run_lp(reg, "ln_agi_per_return", start_year=2000, end_year=2007)

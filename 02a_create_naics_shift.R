@@ -30,7 +30,7 @@ setorder(cw, year, hs6, -import_value)
 cw_1to1 <- cw[, .SD[1], by = .(year, hs6)]
 
 # Bring in trade data at hs6 level, merge to naics6 ---------------------------- 
-years <- c(1995,1990, 2000, 2007, 2013)
+years <- c(1995,1990, 2000, 2007, 2013, 2019)
 shock_list <- vector("list", length(years))
 
 for (i in seq_along(years)) {

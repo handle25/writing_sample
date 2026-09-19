@@ -67,6 +67,7 @@ names_dict <- c(
     "$\\Delta \\frac{Emp_{resident, service}}{Population}$",
   
   
+  
   # Goods ----------------------------------------------------------------------
   
   "w_d_total_goods_jobs_share_resident_emp" =
@@ -169,6 +170,26 @@ names_dict <- c(
   "net_migration" =
     "$Net\\ Migration$",
   
+  # Migration / stayers ----------------------------------------------------------
+  "w_d_returns_3_outflow_share_returns" =
+    "$\\Delta \\frac{Outmigrant\\ Returns}{Nonmigrant\\ Returns}$",
+  
+  "w_d_exemptions_3_outflow_share_exemptions" =
+    "$\\Delta \\frac{Outmigrant\\ Exemptions}{Nonmigrant\\ Exemptions}$",
+  
+  # Migrants / non-migrants ------------------------------------------------------
+  "w_d_returns_2_outflow_share_returns" =
+    "$\\Delta \\frac{Migrant\\ Returns}{Nonmigrant\\ Returns}$",
+  
+  "w_d_exemptions_2_outflow_share_exemptions" =
+    "$\\Delta \\frac{Migrant\\ Exemptions}{Nonmigrant\\ Exemptions}$",
+  
+  # Labor force / non-migrants ---------------------------------------------------
+  "w_d_labor_force_share_returns" =
+    "$\\Delta \\frac{Labor\\ Force}{Nonmigrant\\ Returns}$",
+  
+  "w_d_labor_force_share_exemptions" =
+    "$\\Delta \\frac{Labor\\ Force}{Nonmigrant\\ Exemptions}$",
   
   "w_net_migration_share_resident_emp" =
     "$\\frac{Net\\ Migration}{Emp_{resident}}$",
@@ -356,12 +377,6 @@ baseline(
   controls_2 = "t2 +l_sh_empl_mfg + sh_popfborn + sh_popedu_c"
 )
 
-baseline(
-  "w_d_outside_jobs_share_population_t0",
-  "w_d_outside_jobs_share_population_t0", 
-  controls_1 = "t2 +l_sh_empl_mfg + sh_popfborn + sh_popedu_c",
-  controls_2 = "t2 +l_sh_empl_mfg + sh_popfborn + sh_popedu_c"
-)
 
 # fifth figure -----------------------------------------------------------------
 baseline(
@@ -380,8 +395,8 @@ baseline(
 
 # sixth figure -----------------------------------------------------------------
 baseline(
-  "w_net_migration_share_population_t0",
-  "w_net_migration_share_population_t0", 
+  "w_net_migration_share_population",
+  "w_net_migration_share_population", 
   controls_1 = "t2 +l_sh_empl_mfg + sh_popfborn + sh_popedu_c",
   controls_2 = "t2 +l_sh_empl_mfg + sh_popfborn + sh_popedu_c"
 )
@@ -430,6 +445,13 @@ baseline_controls(
 
 
 baseline_controls(
+  "d_ln_agi_per_return",
+  "d_ln_agi_per_return"
+)
+
+
+
+baseline_controls(
   "w_d_labor_force_share_population",
   "labor_force"
 )
@@ -439,28 +461,27 @@ baseline_controls(
   "unemployment"
 )
 
-baseline_controls(
-  "w_d_unemployed_share_l_labor_force",
-  "unemployment"
-)
 reg[, l_unemployed:= shift(unemployed), by = area_fips]
 reg[, l_labor_force:= shift(labor_force), by = area_fips]
 reg[, d_unemployed_share_l_labor_force := (unemployed - l_unemployed) / l_labor_force * 100]
 winsor(reg, "d_unemployed_share_l_labor_force")
 
-
 baseline_controls(
   "w_d_unemployed_share_l_labor_force",
-  "w_d_unemployed_share_l_labor_force"
+  "unemployment"
 )
+# baseline_controls(
+#   "w_d_unemployed_share_l_labor_force",
+#   "w_d_unemployed_share_l_labor_force"
+# )
 
 
 winsor(reg, "d_pci_diff")
 winsor(reg, "d_net_outmigration")
 winsor(reg, "d_net_inmigration")
 winsor(reg, "d_avg_hh_outflow")
-winsor(reg, "unemployed_share_l_labor_force")
-winsor(reg, "d_unemployment")
+# winsor(reg, "unemployed_share_l_labor_force")
+# winsor(reg, "d_unemployment")
 
 winsor(reg, "d_avg_hh_diff")
 
@@ -482,10 +503,10 @@ baseline_controls(
   "w_d_avg_hh_diff"
 )
 
-baseline_controls(
-  "w_d_unemployment",
-  "w_d_unemployment"
-)
+# baseline_controls(
+#   "w_d_unemployment",
+#   "w_d_unemployment"
+# )
 
 
 baseline_controls(

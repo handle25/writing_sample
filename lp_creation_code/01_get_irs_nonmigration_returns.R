@@ -59,7 +59,7 @@ future_lapply(1990:1991, function(y) {
       x <- readLines(file, warn=FALSE)
       
       # keep IRS county total flow ---------------------------------------------
-      x <- x[grepl("^[0-9]{2}\\s+[0-9]{3}\\s+.*Total Migration", x)]
+      x <- x[grepl("^[0-9]{2}\\s+[0-9]{3}\\s+.*County Non-Migrants", x)] # this line changes
       
       # extract variables ------------------------------------------------------
       dt <- data.table(
@@ -87,7 +87,7 @@ future_lapply(1990:1991, function(y) {
   
   # combine and save -----------------------------------------------------------
   irs_fill <- rbindlist(dt_list, use.names=TRUE, fill=TRUE)
-  fwrite(irs_fill, paste0(path, "/new_lp_irs_migration_", y, ".csv"))
+  fwrite(irs_fill, paste0(path, "/new_lp_irs_nonmigration_", y, ".csv"))
   
   print(paste("Saved year:", y))
 })
@@ -153,8 +153,8 @@ future_lapply(1992:1994, function(y) {
                 "returns", "exemptions", "agi")
       dt[, (cols) := lapply(.SD, as.numeric), .SDcols=cols]
       
-      # keep county total flow -------------------------------------------------
-      dt <- dt[base_county != 0 & other_state == 0]
+      # keep county non-migrants -----------------------------------------------------
+      dt <- dt[grepl("County\\s+Non-Migrant", desc, ignore.case=TRUE)] # this line changes 
       
       # county FIPS ------------------------------------------------------------
       dt[, area_fips := paste0(sprintf("%02d", base_state), sprintf("%03d", base_county))]
@@ -179,7 +179,7 @@ future_lapply(1992:1994, function(y) {
   
   # combine and save -----------------------------------------------------------
   irs_fill <- rbindlist(dt_list, use.names=TRUE, fill=TRUE)
-  fwrite(irs_fill, paste0(path, "/new_lp_irs_migration_", y, ".csv"))
+  fwrite(irs_fill, paste0(path, "/new_lp_irs_nonmigration_", y, ".csv"))
   
   print(paste("Saved year:", y))
 })
@@ -245,7 +245,7 @@ future_lapply(1995:2003, function(y) {
       dt[, (cols) := lapply(.SD, as.numeric), .SDcols=cols]
       
       # keep total domestic US migration ---------------------------------------
-      dt <- dt[base_county != 0 & other_state == 97 & other_county == 0]
+      dt <- dt[((base_county == other_county) & (base_state == other_state)),] # this line changes 
       
       # county FIPS ------------------------------------------------------------
       dt[, area_fips := paste0(sprintf("%02d", base_state), sprintf("%03d", base_county))]
@@ -270,7 +270,7 @@ future_lapply(1995:2003, function(y) {
   
   # combine and save -----------------------------------------------------------
   irs_fill <- rbindlist(dt_list, use.names=TRUE, fill=TRUE)
-  fwrite(irs_fill, paste0(path, "/new_lp_irs_migration_", y, ".csv"))
+  fwrite(irs_fill, paste0(path, "/new_lp_irs_nonmigration_", y, ".csv"))
   
   print(paste("Saved year:", y))
 })
@@ -330,7 +330,7 @@ for (y in 4:10) {
       dt[, (cols) := lapply(.SD, as.numeric), .SDcols=cols]
       
       # keep total domestic US migration ---------------------------------------
-      dt <- dt[base_county != 0 & other_state == 97 & other_county == 0]
+      dt <- dt[((base_county == other_county) & (base_state == other_state)),] # this line changes 
       
       # county FIPS ------------------------------------------------------------
       dt[, area_fips := paste0(sprintf("%02d", base_state), sprintf("%03d", base_county))]
@@ -355,7 +355,7 @@ for (y in 4:10) {
   
   # combine and save -----------------------------------------------------------
   irs_fill <- rbindlist(dt_list, use.names=TRUE, fill=TRUE)
-  fwrite(irs_fill, paste0(path, "/new_lp_irs_migration_", 2000 + y, ".csv"))
+  fwrite(irs_fill, paste0(path, "/new_lp_irs_nonmigration_", 2000 + y, ".csv"))
   
   print(paste("Saved year:", 2000 + y))
 }
@@ -387,7 +387,7 @@ for (y in 2011:2021) {
     dt[, (cols) := lapply(.SD, as.numeric), .SDcols=cols]
     
     # keep total domestic US migration -----------------------------------------
-    dt <- dt[base_county != 0 & other_state == 97 & other_county == 0]
+    dt <- dt[((base_county == other_county) & (base_state == other_state)),] # this line changes 
     
     # county FIPS --------------------------------------------------------------
     dt[, area_fips := paste0(sprintf("%02d", base_state), sprintf("%03d", base_county))]
@@ -410,7 +410,7 @@ for (y in 2011:2021) {
   
   # combine and save -----------------------------------------------------------
   irs_fill <- rbindlist(dt_list, use.names=TRUE, fill=TRUE)
-  fwrite(irs_fill, paste0(path, "/new_lp_irs_migration_", y, ".csv"))
+  fwrite(irs_fill, paste0(path, "/new_lp_irs_nonmigration_", y, ".csv"))
   
   print(paste("Saved year:", y))
 }
@@ -418,19 +418,32 @@ for (y in 2011:2021) {
 # aggregate data ---------------------------------------------------------------
 
 dt <- rbindlist(lapply(1990:2021, function(y) {
-  fread(paste0(path, "/new_lp_irs_migration_", y, ".csv"))
+  fread(paste0(path, "/new_lp_irs_nonmigration_", y, ".csv"))
 }), use.names=TRUE, fill=TRUE)
 
-# check one total per county-year-flow -----------------------------------------
+# check one observation per county-year-flow ----------------------------------
 dups <- dt[, .N, by=.(area_fips, year, flow)][N != 1]
 print(dups)
-dt <- dt[!(area_fips == 1001 & year == 1993 & flow == "inflow")]
+if (nrow(dups)) stop("Duplicate county-year-flow rows remain")
 
-# reshape inflow and outflow ---------------------------------------------------
-irs_wide <- dcast(
-  dt,
-  area_fips + year ~ flow,
-  value.var=c("returns_3", "exemptions_3", "agi_3")
-)
+# check inflow and outflow copies agree ---------------------------------------
+check <- dcast(dt, area_fips + year ~ flow, value.var=c("returns_3", "exemptions_3", "agi_3"))
 
-fwrite(irs_wide, paste0(path, "/new_lp_irs_migration_full.csv"))
+check[, mismatch :=
+        (!is.na(returns_3_inflow) & !is.na(returns_3_outflow) & returns_3_inflow != returns_3_outflow) |
+        (!is.na(exemptions_3_inflow) & !is.na(exemptions_3_outflow) & exemptions_3_inflow != exemptions_3_outflow) |
+        (!is.na(agi_3_inflow) & !is.na(agi_3_outflow) & agi_3_inflow != agi_3_outflow)
+]
+
+# print(check[mismatch == TRUE])
+# if (check[, any(mismatch)]) stop("Inflow and outflow non-migrant values disagree")
+
+# keep one copy ---------------------------------------------------------------
+irs_nonmigration <- dt[flow == "inflow", .(
+  area_fips, year,
+  returns=returns_3,
+  exemptions=exemptions_3,
+  agi=agi_3
+)]
+
+fwrite(irs_nonmigration, paste0(path, "/new_lp_irs_nonmigration_full.csv"))

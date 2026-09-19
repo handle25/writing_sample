@@ -100,11 +100,11 @@ years <- c(2002:2023)
 lodes_list <- list()
 
 for (s in states) {
- 
-    dt <- fread(
-      paste0(path,"/lodes/clean_lp_full/new_clean_lp_full/clean_lp_full_",s,".csv"))
-    
-    lodes_list[[length(lodes_list) + 1]] <- dt
+  
+  dt <- fread(
+    paste0(path,"/lodes/clean_lp_full/new_clean_lp_full/clean_lp_full_",s,".csv"))
+  
+  lodes_list[[length(lodes_list) + 1]] <- dt
 }
 
 lodes_baseline <- rbindlist(lodes_list, fill = TRUE)
@@ -140,9 +140,9 @@ lodes[, outside_jobs := count * outside]
 
 # Collapse to home county
 outside <- lodes[,
-    .(total_jobs = sum(count, na.rm = TRUE),
-    outside_jobs = sum(outside_jobs, na.rm = TRUE)
-  ), by = county]
+                 .(total_jobs = sum(count, na.rm = TRUE),
+                   outside_jobs = sum(outside_jobs, na.rm = TRUE)
+                 ), by = county]
 
 outside[, outside_d_jobs := outside_jobs / total_jobs]
 outside[, year := 2000]
@@ -159,4 +159,29 @@ fwrite(
 )
 
 
+# Measures: aggregate lodes for LPs --------------------------------------------
+outside_1990 <- fread(paste0(path, "/lodes/clean_lp_full/new_clean_lp_full/1990_commuting_measures.csv"))
+outside_2000 <- fread(paste0(path, "/lodes/clean_lp_full/new_clean_lp_full/2000_commuting_measures.csv"))
+
+states <- tolower(state.abb)
+
+lodes_list <- list()
+
+for (s in states) {
+  dt <- fread(paste0(path, "/lodes/clean_lp_full/new_clean_lp_full/measure_clean_lp_full_", s, ".csv"))
+  lodes_list[[length(lodes_list) + 1]] <- dt
+}
+
+lodes_baseline <- rbindlist(lodes_list, fill=TRUE)
+
+# Combine Census + LODES
+lodes <- rbindlist(
+  list(outside_1990, outside_2000, lodes_baseline),
+  use.names=TRUE,
+  fill=TRUE
+)
+
+setorder(lodes, county, year)
+
+fwrite(lodes, paste0(path, "/output/lp_lodes_measures.csv"))
 

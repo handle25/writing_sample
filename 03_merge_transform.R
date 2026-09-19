@@ -36,7 +36,6 @@ make_diff_t0 <- function(dt, num, denom, id = "area_fips") {
 
 diff_denom_all <- function(dt, var) { 
   make_share_diff(dt, var, "resident_emp")
-  make_share_diff(dt, var, "workplace_emp")
   make_share_diff(dt, var, "outside_jobs")
   make_share_diff(dt, var, "total_servc_jobs")
   make_share_diff(dt, var, "total_goods_jobs")
@@ -104,8 +103,8 @@ census <- census |>
   fselect(area_fips, sh_popfborn, sh_popedu_c)
 census <- merge(census, census_f, 
                 by = "area_fips", all = T) |> 
-  fmutate(sh_empl_f = total_female_in_labor_force /
-            (total_male_in_labor_force + total_female_in_labor_force))
+  fmutate(sh_empl_f = total_female_in_labor_force_civilian_employed /
+            (total_male_in_labor_force_civilian_employed + total_female_in_labor_force_civilian_employed)*100)
 
 summary(census$sh_popedu_c)
 summary(census$sh_popfborn)
@@ -152,7 +151,8 @@ setnames(lodes, "county", "area_fips")
 make_base_year(lodes, "outside_jobs", 2000)
 
 # Long-difference years only
-lodes <- lodes[year %in% c(1990, 2002, 2007, 2013)]
+lodes <- lodes[year %in% c(1990, 2000, 2002, 2007, 2013, 2019)]
+setorder(lodes, area_fips, year)
 setnames(lodes, "total_jobs", "resident_emp")
 
 # Merge population
@@ -162,6 +162,7 @@ lodes <- merge(
   by = c("area_fips", "year"),
   all.x = TRUE
 )
+
 
 make_share_diff(lodes, "outside_jobs", "population")
 make_diff_t0(lodes, "outside_jobs", "population")
@@ -188,7 +189,7 @@ make_share_diff(lodes, "outside_age30_54_jobs", "labor_force")
 make_share_diff(lodes, "outside_earn3333_jobs", "outside_jobs")
 make_share_diff(lodes, "outside_age30_54_jobs", "outside_jobs")
 
-make_diff_t0(lodes, "outside_jobs", "labor_force")
+# make_diff_t0(lodes, "outside_jobs", "labor_force")
 make_diff_t0(lodes, "outside_earn3333_jobs", "labor_force")
 make_diff_t0(lodes, "outside_age30_54_jobs", "labor_force")
 
@@ -197,11 +198,24 @@ laus_vars <- setdiff(names(laus), c("area_fips", "year"))
 
 
 lodes[, (laus_vars) := NULL]
-lodes[year==2002, year:= 2000]
-
+lodes <- lodes[year != 2002]
+lodes[year == 1990, year := 1995]
 # IRS --------------------------------------------------------------------------
-irs <- fread(paste0(path, "/irs/lp_irs_migration_full.csv"))
-irs <- irs[year %in% 1990:2012]
+irs <- fread(paste0(path, "/irs/new_lp_irs_migration_full.csv"))
+
+## immigration destination measures 
+irs_detail <- fread(paste0(path, "/irs/lp_irs_destination_conditions_full.csv"))
+irs <- irs[year %in% 1990:2019]
+
+# county AGI
+irs_agi <- fread(paste0(path, "/irs/lp_irs_agi_full.csv")) |> 
+  fmutate(area_fips=as.integer(area_fips),
+          ln_agi_per_return=log(agi_per_return))
+
+irs_agi <- irs_agi[year %in% c(1995, 2000, 2007, 2013, 2019)]
+setorder(irs_agi, area_fips, year)
+
+irs_agi[, d_ln_agi_per_return := ln_agi_per_return - shift(ln_agi_per_return), by=area_fips]
 
 cols <- setdiff(names(irs), c("area_fips", "year"))
 irs[, (cols) := lapply(.SD, as.numeric), .SDcols = cols]
@@ -210,71 +224,42 @@ irs[year %in% 1993:1994, `:=`(new_year = 1995L, base_year = 1990L)]
 irs[year %in% 1998:1999, `:=`(new_year = 2000L, base_year = 1995L)]
 irs[year %in% 2005:2006, `:=`(new_year = 2007L, base_year = 2000L)]
 irs[year %in% 2011:2012, `:=`(new_year = 2013L, base_year = 2007L)]
+irs[year %in% 2017:2018, `:=`(new_year = 2019L, base_year = 2013L)]
+
+irs_detail[year %in% 1993:1994, `:=`(new_year = 1995L, base_year = 1990L)]
+irs_detail[year %in% 1998:1999, `:=`(new_year = 2000L, base_year = 1995L)]
+irs_detail[year %in% 2005:2006, `:=`(new_year = 2007L, base_year = 2000L)]
+irs_detail[year %in% 2011:2012, `:=`(new_year = 2013L, base_year = 2007L)]
+irs_detail[year %in% 2017:2018, `:=`(new_year = 2019L, base_year = 2013L)]
 
 irs <- irs[!is.na(new_year)]
-irs[, year := new_year]
+irs_detail <- irs_detail[!is.na(new_year)]
 
-irs <- irs |> 
-  fgroup_by(new_year, base_year, year, area_fips) |> 
-  fsum()
+irs[, year := new_year]
+irs[, new_year := NULL]
+irs[, base_year := NULL]
+irs_detail[, year := new_year]
+irs_detail[, new_year := NULL]
+irs_detail[, base_year := NULL]
+
+irs <- irs |> fgroup_by(year, area_fips) |> fsum()
+irs_detail <- irs_detail |> fgroup_by(year, area_fips) |> fmean()
 
 # Base-period population
-irs <- merge(
-  irs, acs,
-  by.x = c("area_fips", "base_year"),
-  by.y = c("area_fips", "year"),
-  all.x = TRUE
-)
+irs <- merge(irs, acs,
+             by.x=c("area_fips", "year"),
+             by.y=c("area_fips", "year"),
+             all.x=T)
 
+irs <- merge(irs, irs_detail,
+             by=c("area_fips", "year"),
+             all.x=T)
 
 setnames(irs, "population", "population_base_year")
 irs[, population_2000 := NULL]
 
-# IRS outcomes -----------------------------------------------------------------
-irs[, inflow_share_population_t0 := exemptions_1_inflow / population_base_year * 100]
-irs[, outflow_share_population_t0 := exemptions_1_outflow / population_base_year * 100]
 
-irs[, avg_hh_inflow := exemptions_3_inflow / returns_3_inflow]
-irs[, avg_hh_outflow := exemptions_3_outflow / returns_3_outflow]
-irs[, avg_hh_diff := avg_hh_inflow - avg_hh_outflow]
-
-irs[, pci_in := agi_3_inflow / exemptions_3_inflow]
-irs[, pci_out := agi_3_outflow / exemptions_3_outflow]
-irs[, pci_diff := pci_in - pci_out]
-
-irs[, net_outmigration := returns_3_outflow / (returns_3_outflow + returns_3_inflow) * 100]
-irs[, net_inmigration := returns_3_inflow / (returns_3_outflow + returns_3_inflow) * 100]
-
-# Differences
-setorder(irs, area_fips, year)
-
-diff_vars <- c(
-  "avg_hh_inflow", "avg_hh_outflow", "avg_hh_diff",
-  "pci_in", "pci_out", "pci_diff",
-  "net_outmigration", "net_inmigration"
-)
-
-irs[, paste0("d_", diff_vars) := lapply(.SD, \(x) x - shift(x)),
-    by = area_fips, .SDcols = diff_vars]
-
-# Winsorize
-winsor_vars <- c(
-  "inflow_share_population_t0",
-  "outflow_share_population_t0",
-  "avg_hh_inflow",
-  "avg_hh_outflow",
-  "pci_in",
-  "pci_out",
-  "pci_diff",
-  "d_net_outmigration"
-)
-
-for (v in winsor_vars) winsor(irs, v)
-
-
-################################################################################
-# Merge datasets
-################################################################################
+# Merge datasets ---------------------------------------------------------------
 
 reg <- merge(
   qcew,
@@ -318,6 +303,12 @@ reg <- merge(reg, census,
              by = "area_fips", 
              all.x = T)
 
+
+reg <- merge(reg, irs_agi,
+             by=c("area_fips", "year"),
+             all.x=T)
+
+
 # Regression vars --------------------------------------------------------------
 # State FIPS for clustering
 reg[, statefip := floor(as.integer(area_fips) / 1000)]
@@ -332,15 +323,83 @@ make_share_diff(reg, "labor_force", "population")
 make_share_diff(reg, "unemployed", "labor_force")
 make_diff_t0(reg, "unemployed", "labor_force")
 # Migration
-reg[, net_migration := exemptions_2_inflow - exemptions_2_outflow]
-reg[, net_migration_share_population_t0 := net_migration / population_base_year * 100]
-winsor(reg, "net_migration_share_population_t0")
+reg[, exemptions_net_migration := exemptions_3_inflow - exemptions_3_outflow]
+reg[, returns_net_migration := returns_3_inflow - returns_3_outflow]
 
 # Trade exposure
 winsor(reg, "IPW_US")
 winsor(reg, "IPW_OTH")
+winsor(reg, "IPW_US_wap")
+winsor(reg, "IPW_OTH_wap")
 winsor(reg, "IPW_US_10yr")
 winsor(reg, "IPW_OTH_10yr")
+
+# Migration / remaining population ---------------------------------------------
+reg[, avg_hh_inflow := exemptions_3_inflow / returns_3_inflow]
+reg[, avg_hh_outflow := exemptions_3_outflow / returns_3_outflow]
+reg[, avg_hh_diff := avg_hh_inflow - avg_hh_outflow]
+
+reg[, pci_in := agi_3_inflow / exemptions_3_inflow]
+reg[, pci_out := agi_3_outflow / exemptions_3_outflow]
+reg[, pci_diff := pci_in - pci_out]
+
+reg[, returns_migration := returns_3_outflow + returns_3_inflow]
+reg[, exemptions_migration := exemptions_3_outflow + exemptions_3_inflow]
+
+setorder(reg, area_fips, year)
+
+# Differences
+make_share_diff(reg, "exemptions_net_migration", "exemptions")
+make_share_diff(reg, "exemptions_net_migration", "population")
+make_share_diff(reg, "returns_net_migration", "population")
+make_share_diff(reg, "returns_3_outflow", "returns")
+make_share_diff(reg, "returns_net_migration", "population")
+make_share_diff(reg, "exemptions_net_migration", "population")
+make_share_diff(reg, "returns_3_outflow", "returns_migration")
+make_share_diff(reg, "exemptions_3_outflow", "exemptions")
+make_share_diff(reg, "exemptions_3_outflow", "population")
+make_share_diff(reg, "exemptions_3_outflow", "exemptions_migration")
+reg[, d_pci_in := pci_in - shift(pci_in), by = area_fips]
+winsor(reg, "d_pci_in")
+
+# Labor force / non-migrants ----------------------------------------------------
+make_share_diff(reg, "labor_force", "returns")
+make_share_diff(reg, "labor_force", "exemptions")
+
+reg[, net_outmigration_share_exemptions := (exemptions_3_outflow - exemptions_3_inflow) / exemptions * 100]
+reg[, d_net_outmigration_share_exemptions := net_outmigration_share_exemptions - shift(net_outmigration_share_exemptions), by=area_fips]
+winsor(reg, "d_net_outmigration_share_exemptions")
+# Net outmigration / population ------------------------------------------------
+reg[, net_outmigration_share_population := (exemptions_3_outflow - exemptions_3_inflow) / population * 100]
+reg[, d_net_outmigration_share_population := net_outmigration_share_population - shift(net_outmigration_share_population), by=area_fips]
+winsor(reg, "d_net_outmigration_share_population")
+# Labor force growth -----------------------------------------------------------
+reg[, ln_labor_force := log(labor_force)]
+reg[, d_ln_labor_force := ln_labor_force - shift(ln_labor_force), by=area_fips]
+winsor(reg, "d_ln_labor_force")
+reg[, ln_population := log(population)]
+reg[, d_ln_population := ln_population - shift(ln_population), by=area_fips]
+winsor(reg, "d_ln_population")
+reg[, l_labor_force := shift(labor_force), by = area_fips]
+
+# LODES composition outcomes ---------------------------------------------------
+
+# Services
+diff_denom_all(reg, "outside_servc_jobs")
+diff_denom_all(reg, "total_servc_jobs")
+
+# Goods
+diff_denom_all(reg, "outside_goods_jobs")
+diff_denom_all(reg, "total_goods_jobs")
+
+# Overall commuting
+# diff_denom_all(reg, "outside_jobs")
+
+# Earnings
+diff_denom_all(reg, "outside_earn1250_jobs")
+diff_denom_all(reg, "outside_earn1251_3333_jobs")
+diff_denom_all(reg, "outside_earn3333_jobs")
+winsor(reg, "outside_jobs_share_labor_force")
 ################################################################################
 # Save
 ################################################################################

@@ -116,7 +116,9 @@ laus <- laus |>
 
 # LODES commuting --------------------------------------------------------------
 lodes <- fread(paste0(path,"/output/lp_new_lodes_collapsed_all_no_crosswalk.csv"))
+lodes_measure <- fread(paste0(path, "/output/lp_lodes_measures.csv"))
 setnames(lodes, "county", "area_fips")
+setnames(lodes_measure, "county", "area_fips")
 # Labor force denominator -------------------------------------------------------
 lodes <- merge(
   lodes,
@@ -133,7 +135,7 @@ cols <- setdiff(names(laus), c("area_fips", "year"))
 lodes[, (cols) := lapply(.SD, function(x) NULL), .SDcols = cols]
 
 # IRS migration ----------------------------------------------------------------
-irs <- fread(paste0(path, "/irs/lp_irs_migration_full.csv"))
+irs <- fread(paste0(path, "/irs/new_lp_irs_migration_full.csv"))
 
 cols <- names(irs)[sapply(irs, is.character)]
 irs[, (cols) := lapply(.SD, as.numeric), .SDcols = cols]
@@ -147,6 +149,22 @@ towin <- setdiff(grep("ew|rw", names(irs) , value = T), grep("share", names(irs)
 for (i in 1:length(towin)){
   winsor(irs, towin[i])
 }
+irs_measure <- fread(paste0(path, "/irs/lp_irs_agi_measures.csv")) |> 
+  fmutate(area_fips = as.integer(from_area_fips))
+irs_agi <- fread(paste0(path, "/irs/lp_irs_agi_full.csv")) |> 
+  fmutate(area_fips = as.integer(area_fips))
+irs_agi[, ln_agi_per_return := log(agi_per_return)]
+setorder(irs_agi, area_fips, year)
+
+
+irs <- merge(irs, irs_measure, 
+             by = c("area_fips", "year"), all.x = T)
+
+irs <- merge(irs, irs_agi, 
+             by = c("area_fips", "year"), all.x = T)
+
+
+
 # Merge datasets ---------------------------------------------------------------
 
 reg <- merge(
@@ -187,6 +205,13 @@ reg <- merge(
   all.x = TRUE
 )
 
+reg <- merge(
+  reg, 
+  lodes_measure, 
+  by = c("area_fips", "year"), 
+  all.x = T
+)
+
 setorder(reg, area_fips, year)
 
 # Rename fundamental employment concepts
@@ -214,32 +239,36 @@ reg <- make_base_year(reg, "resident_emp", 2000)
 reg[, resident_workplace_emp_gap := resident_emp - workplace_emp]
 reg[, l_resident_workplace_emp_gap := log(resident_workplace_emp_gap)]
 
-reg[, net_migration :=
-      exemptions_3_inflow - exemptions_3_outflow]
+# Migration --------------------------------------------------------------------
+reg[, exemptions_net_migration := exemptions_3_inflow - exemptions_3_outflow]
+reg[, returns_net_migration := returns_3_inflow - returns_3_outflow]
+reg[, exemptions_total_migration := exemptions_3_inflow + exemptions_3_outflow]
+reg[, returns_total_migration := returns_3_inflow + returns_3_outflow]
 
-reg[, net_migration_samestate :=
-      exemptions_1_inflow - exemptions_1_outflow]
+# Migration shares
+make_share(reg, "exemptions_net_migration", "population")
+make_share(reg, "returns_net_migration", "population")
+make_share(reg, "exemptions_net_migration", "exemptions")
+make_share(reg, "returns_net_migration", "returns")
 
-reg[, net_migration_diffstate :=
-      exemptions_2_inflow - exemptions_2_outflow]
+# Direction of migration
+make_share(reg, "exemptions_3_outflow", "exemptions_total_migration")
+make_share(reg, "returns_3_outflow", "returns_total_migration")
 
-reg[, net_outmigration := exemptions_3_outflow / (exemptions_3_outflow + exemptions_3_inflow) * 100]
+# reg[, net_migration :=
+#       exemptions_3_inflow - exemptions_3_outflow]
+# 
+# reg[, net_outmigration := exemptions_3_outflow / (exemptions_3_outflow + exemptions_3_inflow) * 100]
 
-# Standard contemporaneous denominators
-make_share(reg, "net_migration", "resident_emp")
-make_share(reg, "net_migration", "workplace_emp")
-make_share(reg, "net_migration", "population")
-make_share(reg, "net_migration_samestate", "population")
-make_share(reg, "net_migration_diffstate", "population")
-
-# Preferred LP migration rate:
-# current migration flow / population immediately before period t
-make_share(reg, "net_migration", "population_2007")
-make_share(reg, "net_migration", "population_2000")
-make_share(reg, "net_migration_samestate", "population_2000")
-make_share(reg, "net_migration_samestate", "population_2007")
-make_share(reg, "net_migration_diffstate", "population_2000")
-make_share(reg, "net_migration_diffstate", "population_2007")
+# # Standard contemporaneous denominators
+# make_share(reg, "net_migration", "resident_emp")
+# make_share(reg, "net_migration", "workplace_emp")
+# make_share(reg, "net_migration", "population")
+# 
+# # Preferred LP migration rate:
+# # current migration flow / population immediately before period t
+# make_share(reg, "net_migration", "population_2007")
+# make_share(reg, "net_migration", "population_2000")
 
 # Manufacturing employment shares
 
@@ -277,6 +306,8 @@ winsor(reg, "IPW_US")
 winsor(reg, "IPW_OTH")
 winsor(reg, "IPW_US_pop")
 winsor(reg, "IPW_OTH_pop")
+winsor(reg, "IPW_US_wap")
+winsor(reg, "IPW_OTH_wap")
 winsor(reg, "resident_workplace_emp_gap")
 winsor(reg, "l_resident_workplace_emp_gap")
 

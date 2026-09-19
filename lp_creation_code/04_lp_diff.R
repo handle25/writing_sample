@@ -20,17 +20,9 @@ setwd(path)
 
 # read in data -----------------------------------------------------------------
 reg <- fread(paste0(path, "/output/lp_transformed_reg.csv")) 
-
+reg <- reg[year<=2019]
 setorder(reg, area_fips, year)
-
-reg[, l1_net_migration_share_population :=
-      shift(net_migration / population, 1),
-    by = area_fips]
-
-reg[, l2_net_migration_share_population :=
-      shift(net_migration / population, 2),
-    by = area_fips]
-
+reg[, baseline_resident_emp := resident_emp[year == 2000][1], by=area_fips]
 # function definition ----------------------------------------------------------
 winsor <- function(dt, var, p = 0.01) {
   
@@ -41,7 +33,6 @@ winsor <- function(dt, var, p = 0.01) {
   )
   
   w_var <- paste0("w_", var)
-  
   dt[, (w_var) := pmin(
     pmax(get(var), q[1]),
     q[2]
@@ -52,13 +43,14 @@ run_lp <- function(
     reg,
     outcome,
     start_year = 2000,
-    end_year = 2006,
+    end_year = 2007,
     horizons = 0:7,
     figure = TRUE, 
     denominator = NULL, 
-    controls = ""
+    controls = "",
+    shock = "w_IPW_US",
+    instrument = "w_IPW_OTH"
 ) {
-  
   reg <- copy(reg)
   
   # Make sure shifts are chronological
@@ -129,20 +121,23 @@ run_lp <- function(
       as.formula(
         paste0(
           var,
-          " ~ l1_y + l2_y + l_sh_empl_mfg", controls, 
-          "| year +area_fips  | ",
-          "w_IPW_US ~ w_IPW_OTH"
+          " ~ l1_y + l2_y + l_sh_empl_mfg ", controls,
+          " | year + area_fips | ",
+          shock, " ~ ", instrument
         )
       ),
-      data = reg_est,
-      cluster = ~area_fips + year
+      data=reg_est,
+      cluster=~area_fips + year,
+      weight=~baseline_emp
     )
     
     print(summary(mod))
     
+    fit_shock <- paste0("fit_", shock)
+    
     results[h == hh, `:=`(
-      coef = coef(mod)["fit_w_IPW_US"],
-      se   = se(mod)["fit_w_IPW_US"]
+      coef=coef(mod)[fit_shock],
+      se=se(mod)[fit_shock]
     )]
   }
   
@@ -178,11 +173,11 @@ run_lp <- function(
       theme_bw()
     
     ggsave(
-      paste0(figs, "/differenced_lp_", outcome, "_share_", denominator, date, ".pdf"),
+      paste0(figs, "/differenced_lp_", outcome, "_share_", denominator, "_", shock, "_", date, ".pdf"),
       p,
-      height = 4,
-      width = 4
-    ) 
+      height=4,
+      width=4
+    )
     print(p)
   }
   return(results)
@@ -192,15 +187,35 @@ run_lp <- function(
 reg[, l_sh_empl_mfg := shift(sh_empl_mfg), by = area_fips]
 reg[, total_migration := returns_3_inflow + returns_3_outflow]
 reg[, net_migration := returns_3_inflow - returns_3_outflow]
+reg[, net_migration_share_population := net_migration / total_migration]
+reg[, l2_ex_mean_dest_IPW_US := shift(ex_mean_dest_IPW_US, n = 2), by = area_fips]
+reg[, l1_ex_mean_dest_IPW_US := shift(ex_mean_dest_IPW_US, n = 1), by = area_fips]
+# run regressions --------------------------------------------------------------
 
-run_lp(reg, outcome = "outside_jobs", denominator = "population")
-run_lp(reg, outcome = "net_migration", denominator = "total_migration")
+# Labor market
+run_lp(reg, outcome="labor_force", denominator="population")
+run_lp(reg, outcome="unemployed", denominator="labor_force", 
+       controls = "+ex_mean_dest_IPW_US+l1_ex_mean_dest_IPW_US",end_year = 2012)
+run_lp(reg, outcome="unemployed", denominator="labor_force", 
+       controls = "+ex_mean_dest_IPW_US", end_year = 2012)
 
-run_lp(reg, outcome = "outside_jobs", denominator = "labor_force")
-run_lp(reg, outcome = "net_migration", denominator = "population")
-run_lp(reg, outcome = "net_migration", denominator = "population_2000")
-run_lp(reg, outcome = "labor_force", denominator = "population", controls = "+l1_net_migration_share_population +l2_net_migration_share_population")
-run_lp(reg, outcome = "unemployed", denominator = "population", controls = "")
-run_lp(reg, outcome = "unemployed", denominator = "labor_force")
-run_lp(reg, outcome = "outside_jobs", denominator = "population_2000", controls = "+l1_net_migration_share_population")
-run_lp(reg, outcome = "net_outmigration", denominator = NULL)
+run_lp(reg, outcome="unemployed", denominator="labor_force", controls = "+l1_net_migration_share_population +l2_net_migration_share_population")
+
+# Commuting
+run_lp(reg, outcome="outside_jobs", denominator="population",
+       controls = "+ex_mean_dest_IPW_US", end_year = 2013)
+run_lp(reg, outcome="outside_jobs", denominator="population",
+       controls = "+ex_mean_dest_IPW_US")
+run_lp(reg, outcome="outside_jobs", denominator="labor_force",
+       controls = "+ex_mean_dest_IPW_US", end_year = 2013)
+run_lp(reg, outcome="outside_jobs", denominator="workplace_emp",
+       controls = "+ex_mean_dest_IPW_US", end_year = 2007)
+run_lp(reg, outcome="outside_jobs", denominator="workplace_emp",
+         controls = "+ex_mean_dest_IPW_US", start_year = 2010, end_year = 2013)
+
+# Migration
+run_lp(reg, outcome="exemptions_net_migration", denominator="population",
+              controls = "+ex_mean_dest_IPW_US")
+run_lp(reg, outcome="exemptions_3_outflow", denominator="exemptions_total_migration")
+run_lp(reg, outcome="returns_3_outflow", denominator="returns_total_migration")
+run_lp(reg, outcome="returns_net_migration", denominator="population")
