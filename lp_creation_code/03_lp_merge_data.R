@@ -11,51 +11,7 @@ local <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
 path  <- "D:/writing_sample/data"
 setwd(path)
 
-# Functions --------------------------------------------------------------------
-
-winsor <- function(dt, var, p = 0.01) {
-  q <- quantile(dt[[var]], probs = c(p, 1 - p), na.rm = TRUE)
-  
-  w_var <- paste0("w_", var)
-  
-  dt[, (w_var) := pmin(pmax(get(var), q[1]), q[2])]
-}
-
-
-make_share <- function(dt, num, denom) {
-  
-  share_var <- paste0(num, "_share_", denom)
-  
-  dt[, (share_var) := get(num) / get(denom)]
-  
-  winsor(dt, share_var)
-}
-
-# create share vars, in line with ADH 
-share_denom_all <- function(dt, var) {
-  make_share(dt, var, "resident_emp")
-  make_share(dt, var, "workplace_emp")
-  make_share(dt, var, "outside_jobs")
-  make_share(dt, var, "population")
-}
-
-make_base_year <- function(dt, var, base_year = 2000) {
-  newvar <- paste0(var, "_", base_year)
-  
-  dt_year <- dt[
-    year == base_year,
-    .(value = mean(get(var), na.rm = TRUE)),
-    by = area_fips
-  ]
-  
-  setnames(dt_year, "value", newvar)
-  
-  dt <- merge(dt, dt_year, 
-              by = "area_fips", 
-              all.x = T)
-  return(dt)
-}
-
+source(paste0(local, "/../code/writing_sample/utilities.R"))
 # Read in data -----------------------------------------------------------------
 # Population
 acs <- fread(paste0(path, "/acs/population_1995_2023.csv"))
@@ -170,12 +126,12 @@ reg <- merge(
   all.x = TRUE
 )
 
-reg <- merge(
-  reg,
-  acs_1y,
-  by = c("area_fips", "year"),
-  all.x = TRUE
-)
+# reg <- merge(
+#   reg,
+#   acs_1y,
+#   by = c("area_fips", "year"),
+#   all.x = TRUE
+# )
 
 reg <- merge(
   reg, 

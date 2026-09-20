@@ -31,7 +31,7 @@ output_dir <- paste0(path, "/raw")
 # States and years -------------------------------------------------------------
 states <- tolower(state.abb)
 years <- 2002:2025
-states <- states[grep("de", states)+1:length(states)]
+states <- states[grep("mn", states):length(states)]
 # Pull and collapse ------------------------------------------------------------
 for (s in states) {
   
@@ -157,7 +157,7 @@ for (s in states) {
 
 print("LODES county-to-county state panels complete.")
 
-exit 
+
 # Finished
 print("LODES state-level annual pull complete.")
 # Pull and collapse ------------------------------------------------------------
