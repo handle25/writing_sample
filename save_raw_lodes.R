@@ -24,14 +24,12 @@ rm(list = ls())
 # Paths
 ################################################################################
 
-path <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data/lodes"
-path <- "D:/writing_sample/data/lodes"
+data_path <- "D:/writing_sample/data/lodes"
 output_dir <- paste0(path, "/raw")
 
 # States and years -------------------------------------------------------------
 states <- tolower(state.abb)
 years <- 2002:2025
-states <- states[grep("mn", states):length(states)]
 # Pull and collapse ------------------------------------------------------------
 for (s in states) {
   
@@ -155,11 +153,6 @@ for (s in states) {
   }
 }
 
-print("LODES county-to-county state panels complete.")
-
-
-# Finished
-print("LODES state-level annual pull complete.")
 # Pull and collapse ------------------------------------------------------------
 ## 2000 ------------------------------------------------------------------------
 base_url <- paste0(
@@ -194,6 +187,42 @@ for (st in states) {
     )
   )
 }
+
+## 2000 ------------------------------------------------------------------------
+files_2000 <- list.files(
+  paste0(path, "/census_2000_commuting"),
+  pattern="\\.xls$",
+  full.names=TRUE
+)
+
+# Read and combine all state files ---------------------------------------------
+usa_2000 <- rbindlist(lapply(files_2000, function(f) {
+  
+  x <- read_excel(f, skip=5, col_names=FALSE)
+  x <- as.data.table(x)
+  
+  # Residence state/county, workplace state/county, worker count
+  x <- x[, .(
+    res_state=as.integer(...1),
+    res_county=as.integer(...2),
+    work_state=as.integer(...6),
+    work_county=as.integer(...7),
+    workers=as.numeric(...11)
+  )]
+  
+  x[!is.na(res_state) & !is.na(res_county) &
+      !is.na(work_state) & !is.na(work_county) &
+      !is.na(workers)]
+}))
+
+usa_2000[, `:=`(
+  county=as.integer(sprintf("%02d%03d",res_state,res_county)),
+  w_county=as.integer(sprintf("%02d%03d",work_state,work_county)),
+  year=2000
+)]
+
+setnames(usa_2000,"workers","S000")
+usa_2000 <- usa_2000[, .(S000=sum(S000,na.rm=TRUE)), by=.(county,w_county,year)]
 
 ## 1990 ------------------------------------------------------------------------
 options(timeout = 600)
@@ -235,53 +264,40 @@ usa_1990[, res_county_num  := as.integer(trimws(res_county))]
 usa_1990[, work_state_num  := as.integer(trimws(work_state))]
 usa_1990[, work_county_num := as.integer(trimws(work_county))]
 
-# Residence county FIPS
-usa_1990[, county :=
-           res_state_num * 1000 + res_county_num
-]
+usa_1990[, `:=`(
+  county=as.integer(sprintf("%02d%03d",res_state_num,res_county_num)),
+  w_county=as.integer(sprintf("%02d%03d",work_state_num,work_county_num)),
+  year=1990
+)]
 
-# Outside county of residence
-usa_1990[, outside :=
-           fifelse(
-             res_state_num == work_state_num &
-               res_county_num == work_county_num,
-             0,
-             1
-           )
-]
+setnames(usa_1990,"workers","S000")
+usa_1990 <- usa_1990[, .(S000=sum(S000,na.rm=TRUE)), by=.(county,w_county,year)]
 
+# save all files into one appended file ----------------------------------------
+files <- list.files(
+  output_dir,
+  pattern="^county_od_lodes_.*\\.csv$",
+  full.names=TRUE
+)
 
-usa_1990[, outside_jobs := workers * outside]
+lodes_2002_2025 <- rbindlist(lapply(files,fread),use.names=TRUE,fill=TRUE)
 
-outside_1990 <- usa_1990 |>
-  fgroup_by(county) |>
-  fsummarize(
-    total_jobs   = fsum(workers),
-    outside_jobs = fsum(outside_jobs)
-  ) |>
-  data.table()
+full_lodes <- rbindlist(
+  list(lodes_2002_2025,usa_2000,usa_1990),
+  use.names=TRUE,
+  fill=TRUE
+)
 
-outside_1990[, outside_d_jobs :=
-               outside_jobs / total_jobs]
+setorder(full_lodes,county,year,w_county)
 
-outside_1990[, year := 1990]
+stopifnot(nrow(usa_2000[, .N, by=.(county,w_county,year)][N > 1]) == 0)
+stopifnot(nrow(usa_1990[, .N, by=.(county,w_county,year)][N > 1]) == 0)
 
-outside_1990 <- outside_1990[
-  ,
-  .(
-    county,
-    year,
-    total_jobs,
-    outside_jobs,
-    outside_d_jobs
-  )
-]
+usa_2000[]
+usa_1990[]
 
 
 fwrite(
-  outside_1990,
-  paste0(
-    output_dir,
-    "/1990_commuting_collapsed.csv"
-  )
+  full_lodes,
+  paste0(output_dir,"/full_lodes_data_1990-2025.csv")
 )

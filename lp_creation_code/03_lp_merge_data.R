@@ -40,7 +40,7 @@ laus <- laus |>
 
 # LODES commuting --------------------------------------------------------------
 lodes <- fread(paste0(path,"/output/lp_new_lodes_collapsed_all_no_crosswalk.csv"))
-lodes_measure <- fread(paste0(path, "/output/lp_lodes_measures.csv"))
+lodes_measure <- fread(paste0(path, "/lodes/clean_lp_full/new_clean_lp_full/new_commuting_measures_lp_full_1990-2025.csv"))
 setnames(lodes, "county", "area_fips")
 setnames(lodes_measure, "county", "area_fips")
 # Labor force denominator -------------------------------------------------------

@@ -35,6 +35,7 @@ make_share(reg, "returns_net_migration", "returns")
 
 # Direction of migration
 make_share(reg, "exemptions_3_outflow", "exemptions_total_migration")
+make_share(reg, "exemptions_3_outflow", "exemptions_net_migration")
 make_share(reg, "returns_3_outflow", "returns_total_migration")
 
 # Manufacturing employment shares

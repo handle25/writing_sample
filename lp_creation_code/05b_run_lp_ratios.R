@@ -19,101 +19,19 @@ figs <- "D:/writing_sample/figures"
 local <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
 
 reg <- fread(paste0(path, "/output/lp_transformed_reg.csv"))
-winsor <- function(dt, var, p = 0.01) {
-  
-  q <- quantile(
-    dt[[var]],
-    probs = c(p, 1 - p),
-    na.rm = TRUE
-  )
-  
-  w_var <- paste0("w_", var)
-  
-  dt[, (w_var) := pmin(
-    pmax(get(var), q[1]),
-    q[2]
-  )]
-}
+source(paste0(local, "/../code/writing_sample/utilities.R"))
+source(paste0(local, "/../code/writing_sample/00_load_workspace.R"))
 setwd(path)
 # function definition ----------------------------------------------------------
 # function definition ----------------------------------------------------------
-run_lp <- function(
-    reg, 
-    outcome, 
-    controls = "",
-    start_year=2000, 
-    end_year=2007, 
-    horizons=0:7, 
-    figure=TRUE,
-    shock = "w_IPW_US",
-    instrument = "w_IPW_OTH"
-) {
-  reg <- copy(reg)
-  reg <- reg[!is.na(get(outcome)) & year <= end_year + max(horizons)]
-  reg <- reg[area_fips %in% reg[, .N, by=area_fips][N == length(unique(reg$year)), area_fips]]
-  setorder(reg, area_fips, year)
-  
-  reg[, y_lp := get(outcome)]
-  reg[, l1_y := shift(y_lp), by=area_fips]
-  reg[, l2_y := shift(y_lp, 2), by=area_fips]
-  reg[, l_sh_empl_mfg := shift(sh_empl_mfg), by=area_fips]
-  
-  for (h in horizons) {
-    var <- paste0("diff_", h)
-    reg[, (var) := shift(y_lp, type="lead", n=h) - l1_y]
-  }
-  
-  reg_est <- reg[year %in% start_year:end_year]
-  
-  for (h in horizons) winsor(reg_est, paste0("diff_", h))
-  results <- data.table(h=horizons, coef=NA_real_, se=NA_real_)
-  
-  for (hh in horizons) {
-    var <- paste0("w_diff_", hh)
-    
-    mod <- feols(
-      as.formula(paste0(
-        var,
-        " ~ l1_y + l2_y + l_sh_empl_mfg", controls,
-        " | area_fips + year | ",
-        shock, " ~ ", instrument
-      )),
-      data=reg_est,
-      cluster=~area_fips,
-      weights=~baseline_emp
-    )
-    
-    fit_shock <- paste0("fit_", shock)
-    
-    results[h == hh, `:=`(
-      coef=coef(mod)[fit_shock],
-      se=se(mod)[fit_shock]
-    )]
-  }
-  
-  results[, `:=`(
-    lower90=coef - 1.64*se,
-    upper90=coef + 1.64*se,
-    lower95=coef - 1.96*se,
-    upper95=coef + 1.96*se
-  )]
-  
-  if (figure) {
-    p <- ggplot(results, aes(h, coef)) +
-      geom_ribbon(aes(ymin=lower95, ymax=upper95), alpha=.2) +
-      geom_ribbon(aes(ymin=lower90, ymax=upper90), alpha=.5) +
-      geom_line() + geom_point() +
-      geom_hline(yintercept=0, linetype="dashed") +
-      scale_x_continuous(breaks=horizons) +
-      theme_bw()
-    
-    ggsave(paste0(figs, "/baseline_lp_", outcome, "_", shock, "_", date, ".pdf"), p, height=4, width=4)
-    print(p)
-  }
-  
-  return(results)
-}
+reg[, z_IPW_US := w_IPW_US / sd(w_IPW_US,na.rm=T)]
+reg[, z_IPW_OTH := w_IPW_OTH / sd(w_IPW_OTH,na.rm=T)]
 
+reg[, z_ex_mean_work_IPW_US :=
+      w_ex_mean_work_IPW_US / sd(w_ex_mean_work_IPW_US,na.rm=T)]
+
+reg[, z_ex_mean_work_IPW_OTH :=
+      w_ex_mean_work_IPW_OTH / sd(w_ex_mean_work_IPW_OTH,na.rm=T)]
 
 state_crosswalk <- data.table(
   state = c(
@@ -125,47 +43,148 @@ state_crosswalk <- data.table(
   region = state.region,
   division = state.division
 )
-# destination-condition LPs ----------------------------------------------------
+
+#destination-condition LPs ----------------------------------------------------
 reg[, outside_jobs_share_returns := outside_jobs / returns]
 winsor(reg, "outside_jobs_share_returns")
 
-run_lp(reg, "ew_share_into_less_unemp", start_year=2000, end_year=2007)
-run_lp(reg, "ew_share_into_less_unemp", start_year=2000, end_year=2012, 
-       controls = "+fn_mean_dest_IPW_US",
-       shock = "w_ex_mean_dest_IPW_US", 
-       instrument ="w_fn_mean_dest_IPW_OTH")
+run_lp_ratio(reg, "ew_share_into_less_unemp", start_year=2000, end_year=2007)
+run_lp_ratio(reg, "ew_share_into_less_unemp", start_year=2000, end_year=2015, 
+       shock = "w_ex_mean_work_IPW_US", 
+       instrument ="w_ex_mean_work_IPW_OTH")
 
-run_lp(reg, "ew_share_into_less_exposed", start_year=2000, end_year=2012,
-       controls = "+fn_mean_dest_IPW_US",
-       shock = "w_ex_mean_dest_IPW_US", 
-       instrument ="w_fn_mean_dest_IPW_OTH")
+run_lp_ratio(reg, "ew_share_into_less_exposed", start_year=2000, end_year=2015,
+             controls = "+ex_mean_work_IPW_US",
+             shock = "w_fn_mean_work_IPW_US", 
+             instrument ="w_fn_mean_work_IPW_OTH")
 
-# main outcomes ---------------------------------------------------------------
+run_lp_ratio(reg, "ew_share_into_less_exposed", start_year=2000, end_year=2015,
+             controls = "+ex_mean_work_IPW_US",
+             shock = "w_IPW_US", 
+             instrument ="w_IPW_OTH")
+
+
+run_lp_ratio_multiple_shocks(reg, "ew_share_into_less_unemp", start_year=2000, end_year=2015,
+             shock_1="z_IPW_US",
+             shock_2="z_ex_mean_work_IPW_US",
+             instrument_1="z_IPW_OTH",
+             instrument_2="z_ex_mean_work_IPW_OTH")
+
+
+# main outcomes ----------------------------------------------------------------
 reg[, outside_jobs_share_returns := outside_jobs / returns ]
-# Labor market
-run_lp(reg, "labor_force_share_population", start_year=2000, end_year=2007,
-       controls = "+ex_mean_dest_IPW_US")
+## Labor market / population ---------------------------------------------------
+################################################################################
+run_lp_ratio(reg, "labor_force_share_population", start_year=2000, end_year=2015,
+             shock = "w_IPW_US", 
+             instrument ="w_IPW_OTH")
+################################################################################
+
+# run_lp_ratio(reg, "labor_force_share_population", start_year=2000, end_year=2007,
+#        controls = "+ex_mean_work_IPW_US")
+# 
+# 
+# run_lp_ratio(reg, "labor_force_share_population", start_year=2000, end_year=2015,
+#              shock = "w_fn_mean_work_IPW_US", 
+#              instrument ="w_fn_mean_work_IPW_OTH")
+# 
+# 
+# run_lp_ratio(reg, "labor_force_share_population", start_year=2000, end_year=2015,
+#              shock = "w_fn_mean_neighbor_IPW_US", 
+#              instrument ="w_fn_mean_neighbor_IPW_OTH")
+# 
+# run_lp_ratio(reg, "labor_force_share_population", start_year=2000, end_year=2015,
+#              shock = "w_ex_mean_work_IPW_US", 
+#              instrument ="w_ex_mean_work_IPW_OTH")
+# 
+# run_lp_ratio(reg, "labor_force_share_population", start_year=2000, end_year=2015,
+#              shock = "w_ex_mean_neighbor_IPW_US", 
+#              instrument ="w_ex_mean_neighbor_IPW_OTH")
+# 
+# run_lp_ratio_multiple_shocks(reg, "labor_force_share_population", start_year=2000, end_year=2015,
+#                              shock_1="z_IPW_US",
+#                              shock_2="z_ex_mean_work_IPW_US",
+#                              instrument_1="z_IPW_OTH",
+#                              instrument_2="z_ex_mean_work_IPW_OTH")
+# 
+# reg[, labor_force_share_exemptions := labor_force / exemptions]
+# winsor(reg, "labor_force_share_exemptions")
+# run_lp_ratio_multiple_shocks(reg, "w_labor_force_share_exemptions", start_year=2000, end_year=2015,
+#                              shock_1="z_IPW_US",
+#                              shock_2="z_ex_mean_work_IPW_US",
+#                              instrument_1="z_IPW_OTH",
+#                              instrument_2="z_ex_mean_work_IPW_OTH")
+
+## Unemployment rates ----------------------------------------------------------
+# baseline 
+run_lp_ratio(reg, "unemployed_share_labor_force", start_year=2000, end_year=2015,
+             shock = "w_IPW_US", 
+             instrument ="w_IPW_OTH")
+# full network shock 
+run_lp_ratio(reg, "unemployed_share_labor_force", start_year=2000, end_year=2015,
+             shock = "w_fn_mean_work_IPW_US", 
+             instrument ="w_fn_mean_work_IPW_OTH")
+# external county shock  
+run_lp_ratio(reg, "unemployed_share_labor_force", start_year=2000, end_year=2015,
+             shock = "w_ex_mean_work_IPW_US", 
+             instrument ="w_ex_mean_work_IPW_OTH")
+
+run_lp_ratio_multiple_shocks(reg, "w_unemployed_share_labor_force", start_year=2000, end_year=2015,
+                             shock_1="z_IPW_US",
+                             shock_2="z_ex_mean_work_IPW_US",
+                             instrument_1="z_IPW_OTH",
+                             instrument_2="z_ex_mean_work_IPW_OTH")
 
 
-run_lp(reg, "labor_force_share_population", start_year=2000, end_year=2007,
-       shock = "w_ex_mean_dest_IPW_US", 
-       instrument ="w_fn_mean_dest_IPW_OTH")
+## Commuting patterns ----------------------------------------------------------
+# baseline 
+run_lp_ratio(reg, "w_outside_jobs_share_labor_force", start_year=2000, end_year=2010,
+             shock = "w_IPW_US", 
+             instrument ="w_IPW_OTH")
+# full network shock 
+run_lp_ratio(reg, "w_outside_jobs_share_labor_force", start_year=2000, end_year=2015,
+             shock = "w_fn_mean_work_IPW_US", 
+             instrument ="w_fn_mean_work_IPW_OTH")
+# external county shock  
+run_lp_ratio(reg, "w_outside_jobs_share_labor_force", start_year=2000, end_year=2015,
+             shock = "w_ex_mean_work_IPW_US", 
+             instrument ="w_ex_mean_work_IPW_OTH")
+
+run_lp_ratio_multiple_shocks(reg, "w_outside_jobs_share_resident_emp", start_year=2000, end_year=2015,
+                             shock_1="z_IPW_US",
+                             shock_2="z_ex_mean_work_IPW_US",
+                             instrument_1="z_IPW_OTH",
+                             instrument_2="z_ex_mean_work_IPW_OTH")
+
+## Migration patterns ----------------------------------------------------------
+# baseline 
+run_lp_ratio(reg, "exemptions_3_outflow_share_exemptions_total_migration", start_year=2000, end_year=2010,
+             shock = "w_IPW_US", 
+             instrument ="w_IPW_OTH")
+# full network shock 
+run_lp_ratio(reg, "w_exemptions_net_migration_share_population", start_year=2000, end_year=2015,
+             shock = "w_fn_mean_work_IPW_US", 
+             instrument ="w_fn_mean_work_IPW_OTH")
+# external county shock  
+run_lp_ratio(reg, "w_exemptions_net_migration_share_population", start_year=2000, end_year=2015,
+             shock = "w_ex_mean_work_IPW_US", 
+             instrument ="w_ex_mean_work_IPW_OTH")
+
+run_lp_ratio_multiple_shocks(reg, "exemptions_3_outflow_share_exemptions_total_migration", start_year=2000, end_year=2015,
+                             shock_1="z_IPW_US",
+                             shock_2="z_ex_mean_work_IPW_US",
+                             instrument_1="z_IPW_OTH",
+                             instrument_2="z_ex_mean_work_IPW_OTH")
 
 
-run_lp(reg, "unemployed_share_labor_force", start_year=2000, end_year=2007)
-
-# Commuting
-run_lp(reg, "outside_jobs_share_population", start_year=2000, end_year=2007)
-run_lp(reg, "outside_jobs_share_labor_force", start_year=2000, end_year=2007)
-run_lp(reg, "w_outside_jobs_share_returns", start_year=2000, end_year=2007)
 
 # Migration
-run_lp(reg, "exemptions_net_migration_share_population", start_year=2000, end_year=2007)
-run_lp(reg, "exemptions_3_outflow_share_exemptions_total_migration", start_year=2000, end_year=2007)
+run_lp_ratio(reg, "exemptions_net_migration_share_population", start_year=2000, end_year=2007)
+run_lp_ratio(reg, "exemptions_3_outflow_share_exemptions_total_migration", start_year=2000, end_year=2007)
 
 # Destination of migration
-run_lp(reg, "ew_share_into_less_unemp", start_year=2000, end_year=2007)
-run_lp(reg, "ew_share_into_less_exposed", start_year=2000, end_year=2007)
+run_lp_ratio(reg, "ew_share_into_less_unemp", start_year=2000, end_year=2007)
+run_lp_ratio(reg, "ew_share_into_less_exposed", start_year=2000, end_year=2007)
 
 # Income
-run_lp(reg, "ln_agi_per_return", start_year=2000, end_year=2007)
+run_lp_ratio(reg, "ln_agi_per_return", start_year=2000, end_year=2007)

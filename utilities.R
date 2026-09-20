@@ -1,3 +1,6 @@
+
+# paths 
+data_path <- "D:/writing_sample/data/lodes"
 # Functions --------------------------------------------------------------------
 
 winsor <- function(dt, var, p = 0.01) {
@@ -137,7 +140,7 @@ run_lp_lagged_denom <- function(
       as.formula(
         paste0(
           var,
-          " ~ l1_y + l2_y + l_sh_empl_mfg ", controls,
+          " ~ l1_y + l_sh_empl_mfg ", controls,
           " | year + area_fips | ",
           shock, " ~ ", instrument
         )
@@ -268,7 +271,7 @@ run_lp_multiple_shocks <- function(
     mod <- feols(
       as.formula(paste0(
         var,
-        " ~ l1_y + l2_y + l_sh_empl_mfg + l1_own_shock", controls,
+        " ~ l1_y + l_sh_empl_mfg + l1_own_shock", controls,
         " | year + area_fips | ",
         shock_1, " + ", shock_2,
         " ~ ",
@@ -307,6 +310,191 @@ run_lp_multiple_shocks <- function(
       geom_hline(yintercept=0, linetype="dashed") +
       geom_ribbon(aes(ymin=lower95, ymax=upper95), alpha=.10, color=NA) +
       geom_ribbon(aes(ymin=lower90, ymax=upper90), alpha=.18, color=NA) +
+      geom_line(linewidth=.8) +
+      geom_point(size=2) +
+      scale_x_continuous(breaks=horizons) +
+      labs(
+        x="Horizon",
+        y="Coefficient",
+        color=NULL,
+        fill=NULL
+      ) +
+      theme_minimal() +
+      theme(legend.position="bottom")
+    
+    print(p)
+  }
+  
+  return(results[])
+}
+
+
+run_lp_ratio <- function(
+    reg, 
+    outcome, 
+    controls = "",
+    start_year=2000, 
+    end_year=2007, 
+    horizons=0:7, 
+    figure=TRUE,
+    shock = "w_IPW_US",
+    instrument = "w_IPW_OTH"
+) {
+  reg <- copy(reg)
+  reg <- reg[!is.na(get(outcome)) & year <= end_year + max(horizons)]
+  reg <- reg[area_fips %in% reg[, .N, by=area_fips][N == length(unique(reg$year)), area_fips]]
+  setorder(reg, area_fips, year)
+  
+  reg[, y_lp := get(outcome)]
+  reg[, l1_y := shift(y_lp), by=area_fips]
+  reg[, l2_y := shift(y_lp, 2), by=area_fips]
+  reg[, l_sh_empl_mfg := shift(sh_empl_mfg), by=area_fips]
+  
+  for (h in horizons) {
+    var <- paste0("diff_", h)
+    reg[, (var) := shift(y_lp, type="lead", n=h) - l1_y, by = area_fips]
+  }
+  
+  reg_est <- reg[year %in% start_year:end_year]
+  
+  for (h in horizons) winsor(reg_est, paste0("diff_", h))
+  results <- data.table(h=horizons, coef=NA_real_, se=NA_real_)
+  
+  for (hh in horizons) {
+    var <- paste0("w_diff_", hh)
+    
+    mod <- feols(
+      as.formula(paste0(
+        var,
+        " ~ l1_y + l_sh_empl_mfg", controls,
+        " | area_fips + year | ",
+        shock, " ~ ", instrument
+      )),
+      data=reg_est,
+      cluster=~area_fips+year,
+      weights=~baseline_emp
+    )
+    
+    fit_shock <- paste0("fit_", shock)
+    
+    results[h == hh, `:=`(
+      coef=coef(mod)[fit_shock],
+      se=se(mod)[fit_shock]
+    )]
+  }
+  
+  results[, `:=`(
+    lower90=coef - 1.64*se,
+    upper90=coef + 1.64*se,
+    lower95=coef - 1.96*se,
+    upper95=coef + 1.96*se
+  )]
+  
+  if (figure) {
+    p <- ggplot(results, aes(h, coef)) +
+      geom_ribbon(aes(ymin=lower95, ymax=upper95), alpha=.2) +
+      geom_ribbon(aes(ymin=lower90, ymax=upper90), alpha=.5) +
+      geom_line() + geom_point() +
+      geom_hline(yintercept=0, linetype="dashed") +
+      scale_x_continuous(breaks=horizons) +
+      theme_bw()
+    
+    ggsave(paste0(figs, "/baseline_lp_", outcome, "_", shock, "_", date, ".pdf"), p, height=4, width=4)
+    print(p)
+  }
+  
+  return(results)
+}
+
+# local projection function for multiple shocks - ratio outcomes
+run_lp_ratio_multiple_shocks <- function(
+    reg,
+    outcome,
+    shock_1="w_IPW_US",
+    shock_2="w_ex_mean_dest_IPW_US",
+    instrument_1="w_IPW_OTH",
+    instrument_2="w_ex_mean_dest_IPW_OTH",
+    start_year=2000,
+    end_year=2007,
+    horizons=0:7,
+    controls="",
+    figure=TRUE
+) {
+  reg <- copy(reg)
+  reg <- reg[!is.na(get(outcome)) & year <= end_year + max(horizons)]
+  reg <- reg[area_fips %in% reg[, .N, by=area_fips][N == length(unique(reg$year)), area_fips]]
+  setorder(reg,area_fips,year)
+  
+  # Outcome and lags
+  reg[, y_lp := get(outcome)]
+  reg[, l1_y := shift(y_lp), by=area_fips]
+  reg[, l2_y := shift(y_lp,2), by=area_fips]
+  reg[, l_sh_empl_mfg := shift(sh_empl_mfg), by=area_fips]
+  
+  # LP outcomes: Y[t+h] - Y[t-1]
+  for(h in horizons) {
+    reg[, (paste0("diff_",h)) := shift(y_lp,h,type="lead") - l1_y, by=area_fips]
+  }
+  
+  # Restrict after constructing leads/lags
+  reg_est <- reg[year %in% start_year:end_year]
+  
+  # Winsorize each horizon separately
+  for(h in horizons) winsor(reg_est,paste0("diff_",h))
+  
+  # Long-form results
+  results <- CJ(h=horizons,shock=c(shock_1,shock_2))
+  results[, `:=`(coef=NA_real_,se=NA_real_)]
+  
+  # Run LPs
+  for(hh in horizons) {
+    
+    var <- paste0("w_diff_",hh)
+    
+    mod <- feols(
+      as.formula(paste0(
+        var,
+        " ~ l1_y + l_sh_empl_mfg", controls,
+        " | year + area_fips | ",
+        shock_1, " + ", shock_2,
+        " ~ ", instrument_1, " + ", instrument_2
+      )),
+      data=reg_est,
+      cluster=~area_fips + year,
+      weights=~baseline_emp
+    )
+    
+    for(s in c(shock_1,shock_2)) {
+      fit_s <- paste0("fit_",s)
+      
+      results[h == hh & shock == s, `:=`(
+        coef=coef(mod)[fit_s],
+        se=se(mod)[fit_s]
+      )]
+    }
+  }
+  
+  # Confidence intervals
+  results[, `:=`(
+    lower90=coef - 1.64*se,
+    upper90=coef + 1.64*se,
+    lower95=coef - 1.96*se,
+    upper95=coef + 1.96*se
+  )]
+  
+  # Plot labels
+  results[, shock_label := fifelse(
+    shock == shock_1,
+    "Own-county exposure",
+    "Commuting-network exposure"
+  )]
+  
+  # Plot
+  if(figure) {
+    p <- ggplot(results,aes(x=h,y=coef,color=shock_label,fill=shock_label)) +
+      geom_hline(yintercept=0,linetype="dashed") +
+      geom_ribbon(aes(ymin=lower95,ymax=upper95),alpha=.10,color=NA) +
+      geom_ribbon(aes(ymin=lower90,ymax=upper90),alpha=.18,color=NA) +
       geom_line(linewidth=.8) +
       geom_point(size=2) +
       scale_x_continuous(breaks=horizons) +

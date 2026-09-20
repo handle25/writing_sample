@@ -21,12 +21,14 @@ source(paste0(local, "/../code/writing_sample/utilities.R"))
 # read in data -----------------------------------------------------------------
 reg <- fread(paste0(path, "/output/lp_transformed_reg.csv"))
 setorder(reg, area_fips, year)
+# reg <- reg[year != 2009]
+reg <- reg[year<2020]
 
-reg <- reg[year<=2019]
-balanced <- unique(reg[year %in% 1998:2019,.N, by = area_fips][N==22]$area_fips)
-
-#extract balanced panel 
-reg <- reg[area_fips %in% balanced,]
+# reg <- reg[year<=2019 & year >=1995]
+# balanced <- unique(reg[year %in% 1995:2019,.N, by = area_fips][N==22]$area_fips)
+# 
+# #extract balanced panel 
+# reg <- reg[area_fips %in% balanced,]
 setorder(reg, area_fips, year)
 reg[, baseline_resident_emp := resident_emp[year == 2000][1], by=area_fips]
 
@@ -42,63 +44,95 @@ shocks <- grep("IPW", names(reg), value=TRUE)
 for (v in shocks) reg[, (paste0("l1_", v)) := shift(get(v), 1), by=area_fips]
 for (v in shocks) winsor(reg, v, p = .02)
 
+var <- "w_ex_mean_dest_IPW_US"
+reg[, unemployed := as.double(unemployed)]
+
+reg[, {
+  x <- get(var)
+  w <- baseline_emp
+  ok <- !is.na(x) & !is.na(w) & w > 0
+  x <- x[ok]; w <- w[ok]
+  
+  .(
+    N=length(x),
+    mean=weighted.mean(x,w),
+    sd=sqrt(weighted.mean((x-weighted.mean(x,w))^2,w)),
+    min=min(x),
+    p25=Hmisc::wtd.quantile(x,w,probs=.25),
+    median=Hmisc::wtd.quantile(x,w,probs=.5),
+    p75=Hmisc::wtd.quantile(x,w,probs=.75),
+    max=max(x)
+  )
+}, by=year]
 
 # run regressions --------------------------------------------------------------
 
 # Labor market
-run_lp_lagged_denom(reg, outcome="labor_force", denominator="population")
-run_lp_lagged_denom(reg, outcome="labor_force", denominator="population", 
-       shock = "w_IPW_US", 
-       instrument = "w_fn_mean_dest_IPW_OTH",
-       controls = "+l1_own_shock+l2_own_shock")
+# run_lp_lagged_denom(reg, outcome="labor_force", denominator="population")
+# run_lp_lagged_denom(reg, outcome="labor_force", denominator="population", 
+#        shock = "w_IPW_US", 
+#        instrument = "w_fn_mean_dest_IPW_OTH",
+#        controls = "+l1_own_shock+l2_own_shock")
+# 
+# run_lp_lagged_denom(reg, outcome="labor_force", denominator="population", 
+#        controls = "+l1_own_shock+l2_own_shock")
+# 
+# run_lp_lagged_denom(reg, outcome="labor_force", denominator="population", 
+#        controls = "+l1_own_shock+l2_own_shock+w_fn_mean_dest_IPW_US")
+# 
+# # unemployment 
+# run_lp_lagged_denom(reg, outcome="unemployed", denominator="labor_force", 
+#        shock = "w_IPW_US", 
+#        instrument = "w_ex_mean_dest_IPW_OTH",
+#        controls = "+l1_own_shock+l2_own_shock+l1_w_ex_mean_dest_IPW_OTH",
+#        end_year = 2010)
+# 
+# run_lp_lagged_denom(reg, outcome="unemployed", denominator="labor_force", 
+#        shock = "w_IPW_US", 
+#        instrument = "w_IPW_OTH",
+#        controls = "+l1_own_shock+l2_own_shock",
+#        end_year = 2010)
+# 
+# run_lp_lagged_denom(reg, outcome="unemployed", denominator="labor_force", 
+#        controls = "+ex_mean_dest_IPW_US", end_year = 2012)
+# 
+# run_lp_lagged_denom(reg, outcome="unemployed", denominator="labor_force",
+#        shock="w_ex_mean_dest_IPW_US",
+#        instrument="w_ex_mean_dest_IPW_OTH",
+#        end_year=2008)
+# 
+# 
+# # Commuting
+# run_lp_lagged_denom(reg, outcome="outside_jobs", denominator="population",
+#        controls = "+ex_mean_dest_IPW_US", end_year = 2013)
+# run_lp_lagged_denom(reg, outcome="outside_jobs", denominator="population",
+#        controls = "+ex_mean_dest_IPW_US")
+# run_lp_lagged_denom(reg, outcome="outside_jobs", denominator="labor_force",
+#        controls = "+ex_mean_dest_IPW_US", end_year = 2013)
+# run_lp_lagged_denom(reg, outcome="outside_jobs", denominator="workplace_emp",
+#        controls = "+ex_mean_dest_IPW_US", end_year = 2007)
+# run_lp_lagged_denom(reg, outcome="outside_jobs", denominator="workplace_emp",
+#          controls = "+ex_mean_dest_IPW_US", start_year = 2010, end_year = 2013)
+# 
 
-run_lp_lagged_denom(reg, outcome="labor_force", denominator="population", 
-       controls = "+l1_own_shock+l2_own_shock")
+run_lp_lagged_denom(reg, outcome="outside_jobs", 
+                    denominator="resident_emp",
+                    controls="+l1_own_shock+l2_own_shock+w_ex_mean_dest_IPW_US",
+                    start_year = 1997, 
+                    end_year = 2007)
+run_lp_lagged_denom(reg, outcome="exemptions_3_outflow", 
+                    denominator="exemptions",
+                    controls="+l1_own_shock+l2_own_shock+w_ex_mean_dest_IPW_US",
+                    start_year = 1997, 
+                    end_year = 2015)
 
-run_lp_lagged_denom(reg, outcome="labor_force", denominator="population", 
-       controls = "+l1_own_shock+l2_own_shock+w_fn_mean_dest_IPW_US")
-
-# unemployment 
-run_lp_lagged_denom(reg, outcome="unemployed", denominator="labor_force", 
-       shock = "w_IPW_US", 
-       instrument = "w_ex_mean_dest_IPW_OTH",
-       controls = "+l1_own_shock+l2_own_shock+l1_w_ex_mean_dest_IPW_OTH",
-       end_year = 2010)
-
-run_lp_lagged_denom(reg, outcome="unemployed", denominator="labor_force", 
-       shock = "w_IPW_US", 
-       instrument = "w_IPW_OTH",
-       controls = "+l1_own_shock+l2_own_shock",
-       end_year = 2010)
-
-run_lp_lagged_denom(reg, outcome="unemployed", denominator="labor_force", 
-       controls = "+ex_mean_dest_IPW_US", end_year = 2012)
-
-run_lp_lagged_denom(reg, outcome="unemployed", denominator="labor_force",
-       shock="w_ex_mean_dest_IPW_US",
-       instrument="w_ex_mean_dest_IPW_OTH",
-       end_year=2008)
-
-
-# Commuting
-run_lp_lagged_denom(reg, outcome="outside_jobs", denominator="population",
-       controls = "+ex_mean_dest_IPW_US", end_year = 2013)
-run_lp_lagged_denom(reg, outcome="outside_jobs", denominator="population",
-       controls = "+ex_mean_dest_IPW_US")
-run_lp_lagged_denom(reg, outcome="outside_jobs", denominator="labor_force",
-       controls = "+ex_mean_dest_IPW_US", end_year = 2013)
-run_lp_lagged_denom(reg, outcome="outside_jobs", denominator="workplace_emp",
-       controls = "+ex_mean_dest_IPW_US", end_year = 2007)
-run_lp_lagged_denom(reg, outcome="outside_jobs", denominator="workplace_emp",
-         controls = "+ex_mean_dest_IPW_US", start_year = 2010, end_year = 2013)
-
-# Migration
-run_lp_lagged_denom(reg, outcome="exemptions_net_migration", denominator="population",
-              controls = "+ex_mean_dest_IPW_US")
-run_lp_lagged_denom(reg, outcome="exemptions_3_outflow", denominator="exemptions_total_migration")
-run_lp_lagged_denom(reg, outcome="returns_3_outflow", denominator="returns_total_migration")
-run_lp_lagged_denom(reg, outcome="returns_net_migration", denominator="population")
-
+# # Migration
+# run_lp_lagged_denom(reg, outcome="exemptions_net_migration", denominator="population",
+#               controls = "+ex_mean_dest_IPW_US")
+# run_lp_lagged_denom(reg, outcome="exemptions_3_outflow", denominator="exemptions_total_migration")
+# run_lp_lagged_denom(reg, outcome="returns_3_outflow", denominator="returns_total_migration")
+# run_lp_lagged_denom(reg, outcome="returns_net_migration", denominator="population")
+# 
 
 # multi shock regs -------------------------------------------------------------
 
@@ -111,32 +145,33 @@ lf_multi <- run_lp_multiple_shocks(
   instrument_1="w_IPW_OTH",
   instrument_2="w_ex_mean_dest_IPW_OTH",
   start_year=2000,
-  end_year=2010
+  end_year=2015
 )
 
 lf_multi <- run_lp_multiple_shocks(
   reg,
-  outcome="exemptions_net_migration",
-  denominator="population",
+  outcome="exemptions_3_outflow",
+  denominator="labor_force",
   shock_1="w_IPW_US",
   shock_2="w_ex_mean_dest_IPW_US",
   instrument_1="w_IPW_OTH",
   instrument_2="w_ex_mean_dest_IPW_OTH",
   controls="+l1_own_shock+l2_own_shock",
-  start_year=2000,
-  end_year=2007
+  start_year=1998,
+  end_year=2015
 )
+
 lf_multi <- run_lp_multiple_shocks(
   reg,
   outcome="outside_jobs",
-  denominator="population",
+  denominator="labor_force",
   shock_1="w_IPW_US",
   shock_2="w_ex_mean_dest_IPW_US",
   instrument_1="w_IPW_OTH",
   instrument_2="w_ex_mean_dest_IPW_OTH",
   controls="+l1_own_shock+l2_own_shock",
   start_year=2000,
-  end_year=2007
+  end_year=2015
 )
 
 
@@ -151,12 +186,25 @@ lf_multi <- run_lp_multiple_shocks(
   instrument_2="w_ex_mean_dest_IPW_OTH",
   controls="+l1_own_shock+l2_own_shock",
   start_year=2000,
-  end_year=2010
+  end_year=2015
+)
+
+lf_multi <- run_lp_multiple_shocks(
+  reg,
+  outcome="outside_jobs",
+  denominator="labor_force",
+  shock_1="w_IPW_US",
+  shock_2="w_ex_mean_dest_IPW_US",
+  instrument_1="w_IPW_OTH",
+  instrument_2="w_ex_mean_dest_IPW_OTH",
+  controls="+l1_own_shock+l2_own_shock",
+  start_year=2000,
+  end_year=2015
 )
 
 
 lf_multi <- run_lp_multiple_shocks(
-  reg,
+  reg[year!=2019,],
   outcome="outside_jobs",
   denominator="labor_force",
   shock_1="l1_w_IPW_US",
@@ -189,7 +237,7 @@ lf_multi <- run_lp_multiple_shocks(
   shock_2="l1_w_ex_mean_dest_IPW_US",
   instrument_1="l1_w_IPW_OTH",
   instrument_2="l1_w_ex_mean_dest_IPW_OTH",
-  controls = "+l1_own_shock+l2_own_shock+exemptions_3_outflow_share_net_migration", 
+  controls = "+l1_own_shock+l2_own_shock+exemptions_3_outflow_share_exemptions_net_migration", 
   start_year=2000,
   end_year=2007
 )
