@@ -166,12 +166,17 @@ lodes <- merge(
 
 make_share_diff(lodes, "outside_jobs", "population")
 make_diff_t0(lodes, "outside_jobs", "population")
+
 lodes[, outside_jobs_population_2000 := outside_jobs_2000 /population_2000]
 setorder(lodes, area_fips, year)
 # Remove population variables before later merge
 lodes[, c("population", "population_2000") := NULL]
 
-# Labor force denominator -------------------------------------------------------
+## new lodes network shocks ----------------------------------------------------
+lodes_measures <- fread(
+  paste0(path,"/output/ld_lodes_measures.csv"))
+
+# Labor force denominator ------------------------------------------------------
 lodes <- merge(
   lodes,
   laus,
@@ -188,8 +193,7 @@ make_share_diff(lodes, "outside_age30_54_jobs", "labor_force")
 
 make_share_diff(lodes, "outside_earn3333_jobs", "outside_jobs")
 make_share_diff(lodes, "outside_age30_54_jobs", "outside_jobs")
-
-# make_diff_t0(lodes, "outside_jobs", "labor_force")
+make_diff_t0(lodes, "outside_jobs", "labor_force")
 make_diff_t0(lodes, "outside_earn3333_jobs", "labor_force")
 make_diff_t0(lodes, "outside_age30_54_jobs", "labor_force")
 
@@ -293,6 +297,14 @@ reg <- merge(
   all.x = TRUE
 )
 
+reg <- merge(
+  reg,
+  lodes_measures,
+  by = c("area_fips", "year"),
+  all.x = TRUE
+)
+
+
 setorder(
   reg,
   area_fips,
@@ -366,6 +378,7 @@ winsor(reg, "d_pci_in")
 make_share_diff(reg, "labor_force", "returns")
 make_share_diff(reg, "labor_force", "exemptions")
 
+
 reg[, net_outmigration_share_exemptions := (exemptions_3_outflow - exemptions_3_inflow) / exemptions * 100]
 reg[, d_net_outmigration_share_exemptions := net_outmigration_share_exemptions - shift(net_outmigration_share_exemptions), by=area_fips]
 winsor(reg, "d_net_outmigration_share_exemptions")
@@ -400,6 +413,9 @@ diff_denom_all(reg, "outside_earn1250_jobs")
 diff_denom_all(reg, "outside_earn1251_3333_jobs")
 diff_denom_all(reg, "outside_earn3333_jobs")
 winsor(reg, "outside_jobs_share_labor_force")
+
+shock_vars <- grep("^(ex|fn)_.*IPW_(US|OTH)$", names(reg), value=TRUE)
+for (v in shock_vars) winsor(reg, v)
 ################################################################################
 # Save
 ################################################################################

@@ -96,6 +96,7 @@ baseline <- function(
     desc,
     shock_us = "w_IPW_US",
     shock_oth = "w_IPW_OTH", 
+    control_table = F, 
     drop = c("Constant", "sh_popfborn", "sh_popedu_c", "l_sh_empl_mfg","sh_empl_f")
 ) {
   
@@ -179,46 +180,46 @@ baseline <- function(
     )
   })
   
+  
+  reg <- reg19
+  mods19 <- lapply(dep_vars, function(y) {
     
-    reg <- reg19
-    mods19 <- lapply(dep_vars, function(y) {
-      
-      fml <- as.formula(
-        paste0(y, " ~  1  ", " | lag_IPW_US ~ lag_IPW_OTH")
-      )
-      feols(
-        fml,
-        data = reg[year %in% c(2019)],
-        weights = ~baseline_emp,
-        cluster = ~statefip
-      )
-    })
-    mods19_lsh <- lapply(dep_vars, function(y) {
-      fml <- as.formula(
-        paste0(y, " ~  1+  l_sh_empl_mfg | lag_IPW_US ~ lag_IPW_OTH")
-      )
-      feols(
-        fml,
-        data = reg[year %in% c(2019, 2019)],
-        weights = ~baseline_emp,
-        cluster = ~statefip
-      )
-    })
-    mods19_ctl <- lapply(dep_vars, function(y) {
-      fml <- as.formula(
-        paste0(y, " ~ 1 +  l_sh_empl_mfg + sh_popfborn + sh_popedu_c + sh_empl_f | lag_IPW_US ~ lag_IPW_OTH")
-      )
-      feols(
-        fml,
-        data = reg[year %in% c(2019, 2019)],
-        weights = ~baseline_emp,
-        cluster = ~statefip
-      )
-    })
+    fml <- as.formula(
+      paste0(y, " ~  1  ", " | lag_IPW_US ~ lag_IPW_OTH")
+    )
+    feols(
+      fml,
+      data = reg[year %in% c(2019)],
+      weights = ~baseline_emp,
+      cluster = ~statefip
+    )
+  })
+  mods19_lsh <- lapply(dep_vars, function(y) {
+    fml <- as.formula(
+      paste0(y, " ~  1+  l_sh_empl_mfg | lag_IPW_US ~ lag_IPW_OTH")
+    )
+    feols(
+      fml,
+      data = reg[year %in% c(2019, 2019)],
+      weights = ~baseline_emp,
+      cluster = ~statefip
+    )
+  })
+  mods19_ctl <- lapply(dep_vars, function(y) {
+    fml <- as.formula(
+      paste0(y, " ~ 1 +  l_sh_empl_mfg + sh_popfborn + sh_popedu_c + sh_empl_f | lag_IPW_US ~ lag_IPW_OTH")
+    )
+    feols(
+      fml,
+      data = reg[year %in% c(2019, 2019)],
+      weights = ~baseline_emp,
+      cluster = ~statefip
+    )
+  })
   
   mods <- c(mods07_ctl, mods13_ctl)
   names(mods) <- c(dep_vars, dep_vars)
-  file <- paste0(path, "/../figures/final_", desc, date, ".tex")
+  file <- paste0(path, "/../figures/final_", desc,"_", shock_us, "_", date, ".tex")
   
   etable(
     mods,
@@ -259,9 +260,10 @@ baseline <- function(
   invisible(mods)
   
   # all models 
+  if (control_table == T){
   mods <- c(mods07,mods07_lsh,mods07_ctl, mods13,mods13_lsh,mods13_ctl)
   names(mods) <- c(dep_vars, dep_vars, dep_vars, dep_vars, dep_vars, dep_vars)
-  file <- paste0(path, "/../figures/final_controls_", desc, date, ".tex")
+  file <- paste0(path, "/../figures/final_controls_", desc,"_", shock_us, "_", date, ".tex")
   
   etable(
     mods,
@@ -304,7 +306,7 @@ baseline <- function(
   x <- append(x, "\\midrule", after = i+2)
   
   writeLines(x, file)
-  
+  }
   invisible(mods)
 }
 
@@ -321,8 +323,21 @@ baseline(
   shock_oth = "w_IPW_OTH_wap"
 )
 
-baseline(
 
+baseline(
+  "d_sh_empl_mfg",
+  "d_sh_empl_mfg", 
+  shock_us = "w_fn_mean_dest_IPW_US",
+  shock_oth = "w_fn_mean_dest_IPW_OTH"
+)
+baseline(
+  "d_sh_empl_mfg",
+  "d_sh_empl_mfg", 
+  shock_us = "w_IPW_US+w_ex_mean_dest_IPW_US",
+  shock_oth = "w_IPW_OTH+w_ex_mean_dest_IPW_OTH"
+)
+
+baseline(
   "d_ln_agi_per_return",
   "d_ln_agi_per_return"
 )
@@ -335,6 +350,43 @@ baseline(
   "w_d_outside_jobs_share_labor_force",
   shock_us = "w_IPW_US_10yr",
   shock_oth = "w_IPW_OTH_10yr"
+)
+
+baseline(
+  "w_d_outside_jobs_share_labor_force",
+  "w_d_outside_jobs_share_labor_force",
+  shock_us = "w_IPW_US_10yr",
+  shock_oth = "w_IPW_OTH_10yr"
+)
+
+
+baseline(
+  "w_d_outside_jobs_share_labor_force",
+  "w_d_outside_jobs_share_labor_force",
+  shock_us = "w_IPW_US_10yr + w_ex_mean_dest_IPW_US",
+  shock_oth = "w_IPW_OTH_10yr + w_ex_mean_dest_IPW_OTH"
+)
+
+baseline(
+  "w_d_outside_jobs_share_labor_force",
+  "w_d_outside_jobs_share_labor_force",
+  shock_us = "w_ex_mean_dest_IPW_US",
+  shock_oth = "w_ex_mean_dest_IPW_OTH"
+)
+
+baseline(
+  "w_d_outside_jobs_share_labor_force",
+  "w_d_outside_jobs_share_labor_force",
+  shock_us = "w_IPW_US_10yr",
+  shock_oth = "w_IPW_OTH_10yr"
+)
+
+
+baseline(
+  "w_d_outside_jobs_share_labor_force",
+  "w_d_outside_jobs_share_labor_force",
+  shock_us = "w_fn_mean_dest_IPW_US",
+  shock_oth = "w_fn_mean_dest_IPW_OTH"
 )
 
 baseline(

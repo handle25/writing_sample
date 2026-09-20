@@ -1,4 +1,10 @@
+################################################################################
+# Aggregate data 
+################################################################################
+
 path <- "D:/writing_sample/data"
+
+# peter schott trade weight ----------------------------------------------------
 # using U.S. HS10 import values to select the dominant SIC within each HS6
 weights <- data.table(read_stata(paste0(path, "/peter_schott/imp_detl_yearly_90n/imp_detl_yearly_90n.dta")))
 weights <- rbind(weights, data.table(read_stata(paste0(path, "/peter_schott/imp_detl_yearly_91n/imp_detl_yearly_91n.dta"))), fill = TRUE)
@@ -51,7 +57,6 @@ fwrite(cw_1to1, paste0(path, "/peter_schott/weights_extended_collapsed.csv"))
 fwrite(weights, paste0(path, "/peter_schott/weights_full.csv"))
   
 # lodes data collapsed in 01b --------------------------------------------------
-
 states <- tolower(state.abb)
 years <- c(2002, 2007, 2013)
 
@@ -162,6 +167,8 @@ fwrite(
 # Measures: aggregate lodes for LPs --------------------------------------------
 outside_1990 <- fread(paste0(path, "/lodes/clean_lp_full/new_clean_lp_full/1990_commuting_measures.csv"))
 outside_2000 <- fread(paste0(path, "/lodes/clean_lp_full/new_clean_lp_full/2000_commuting_measures.csv"))
+outside_2001 <- copy(outside_2000) 
+outside_2001[, year := 2001]
 
 states <- tolower(state.abb)
 
@@ -176,7 +183,7 @@ lodes_baseline <- rbindlist(lodes_list, fill=TRUE)
 
 # Combine Census + LODES
 lodes <- rbindlist(
-  list(outside_1990, outside_2000, lodes_baseline),
+  list(outside_1990, outside_2000, outside_2001, lodes_baseline),
   use.names=TRUE,
   fill=TRUE
 )
@@ -184,4 +191,53 @@ lodes <- rbindlist(
 setorder(lodes, county, year)
 
 fwrite(lodes, paste0(path, "/output/lp_lodes_measures.csv"))
+
+# Measures: aggregate lodes for LDs --------------------------------------------
+outside_1990 <- fread(paste0(path, "/lodes/clean_lp_full/new_clean_lp_full/1990_commuting_measures.csv"))
+outside_2000 <- fread(paste0(path, "/lodes/clean_lp_full/new_clean_lp_full/2000_commuting_measures.csv"))
+outside_2001 <- copy(outside_2000) 
+outside_2001[, year := 2001]
+
+states <- tolower(state.abb)
+
+lodes_list <- list()
+
+for (s in states) {
+  dt <- fread(paste0(path, "/lodes/clean_lp_full/new_clean_lp_full/measure_clean_lp_full_", s, ".csv"))
+  lodes_list[[length(lodes_list) + 1]] <- dt
+}
+
+lodes_baseline <- rbindlist(lodes_list, fill=TRUE)
+
+# Combine Census + LODES
+lodes <- rbindlist(
+  list(outside_1990, outside_2000, outside_2001, lodes_baseline),
+  use.names=TRUE,
+  fill=TRUE
+)
+
+setorder(lodes, county, year)
+
+# collapse to the average of the period for average shocks 
+lodes[ year %in% c(2000:2002), new_year := 2000]
+lodes[ year %in% c(2002:2007), new_year := 2007]
+lodes[ year %in% c(2007:2013), new_year := 2013]
+lodes[ year %in% c(2013:2019), new_year := 2019]
+lodes[, year := new_year]
+
+# collapse to the average shock in the period 
+lodes <- lodes[, .(
+  ex_mean_dest_IPW_US = mean(ex_mean_dest_IPW_US, na.rm=TRUE),
+  ex_mean_dest_IPW_OTH = mean(ex_mean_dest_IPW_OTH, na.rm=TRUE),
+  ex_share_less_exposed = mean(ex_share_less_exposed, na.rm=TRUE),
+  ex_share_neighbor_commuters = mean(ex_share_neighbor_commuters, na.rm=TRUE),
+  
+  fn_mean_dest_IPW_US = mean(fn_mean_dest_IPW_US, na.rm=TRUE),
+  fn_mean_dest_IPW_OTH = mean(fn_mean_dest_IPW_OTH, na.rm=TRUE),
+  fn_share_less_exposed = mean(fn_share_less_exposed, na.rm=TRUE),
+  fn_share_neighbor_commuters = mean(fn_share_neighbor_commuters, na.rm=TRUE)
+), by=.(county, year)]
+
+setnames(lodes, "county", "area_fips") 
+fwrite(lodes, paste0(path, "/output/ld_lodes_measures.csv"))
 

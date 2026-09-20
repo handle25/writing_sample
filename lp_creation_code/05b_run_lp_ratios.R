@@ -130,16 +130,28 @@ reg[, outside_jobs_share_returns := outside_jobs / returns]
 winsor(reg, "outside_jobs_share_returns")
 
 run_lp(reg, "ew_share_into_less_unemp", start_year=2000, end_year=2007)
-run_lp(reg, "ew_share_into_less_unemp", start_year=2000, end_year=2007, 
-       controls = "+fn_mean_dest_IPW_US")
-run_lp(reg, "ew_share_into_less_exposed", start_year=2000, end_year=2007,
-       controls = "+fn_mean_dest_IPW_US")
+run_lp(reg, "ew_share_into_less_unemp", start_year=2000, end_year=2012, 
+       controls = "+fn_mean_dest_IPW_US",
+       shock = "w_ex_mean_dest_IPW_US", 
+       instrument ="w_fn_mean_dest_IPW_OTH")
+
+run_lp(reg, "ew_share_into_less_exposed", start_year=2000, end_year=2012,
+       controls = "+fn_mean_dest_IPW_US",
+       shock = "w_ex_mean_dest_IPW_US", 
+       instrument ="w_fn_mean_dest_IPW_OTH")
 
 # main outcomes ---------------------------------------------------------------
 reg[, outside_jobs_share_returns := outside_jobs / returns ]
 # Labor market
 run_lp(reg, "labor_force_share_population", start_year=2000, end_year=2007,
        controls = "+ex_mean_dest_IPW_US")
+
+
+run_lp(reg, "labor_force_share_population", start_year=2000, end_year=2007,
+       shock = "w_ex_mean_dest_IPW_US", 
+       instrument ="w_fn_mean_dest_IPW_OTH")
+
+
 run_lp(reg, "unemployed_share_labor_force", start_year=2000, end_year=2007)
 
 # Commuting

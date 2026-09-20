@@ -300,7 +300,7 @@ baseline <- function(
   
   mods <- c(mods07, mods13)
   names(mods) <- c(dep_vars, dep_vars)
-  file <- paste0(path, "/../figures/model_", desc, date, ".tex")
+  file <- paste0(path, "/../figures/model_", desc, "_", shock_us, "_", date, ".tex")
   
   etable(
     mods,
@@ -352,7 +352,6 @@ baseline(
   controls_2 = "t2 +l_sh_empl_mfg "
 )
 
-
 # second figure ----------------------------------------------------------------
 baseline(
   "w_d_labor_force_share_population",
@@ -395,8 +394,8 @@ baseline(
 
 # sixth figure -----------------------------------------------------------------
 baseline(
-  "w_net_migration_share_population",
-  "w_net_migration_share_population", 
+  "w_d_exemptions_net_migration_share_population",
+  "w_d_exemptions_net_migration_share_population", 
   controls_1 = "t2 +l_sh_empl_mfg + sh_popfborn + sh_popedu_c",
   controls_2 = "t2 +l_sh_empl_mfg + sh_popfborn + sh_popedu_c"
 )
@@ -476,27 +475,27 @@ baseline_controls(
 # )
 
 
-winsor(reg, "d_pci_diff")
-winsor(reg, "d_net_outmigration")
-winsor(reg, "d_net_inmigration")
-winsor(reg, "d_avg_hh_outflow")
+# winsor(reg, "d_pci_diff")
+# winsor(reg, "d_net_outmigration")
+# winsor(reg, "d_net_inmigration")
+# winsor(reg, "d_avg_hh_outflow")
 # winsor(reg, "unemployed_share_l_labor_force")
 # winsor(reg, "d_unemployment")
 
-winsor(reg, "d_avg_hh_diff")
+# winsor(reg, "d_avg_hh_diff")
 
 
 baseline(
-  "w_d_net_outmigration",
-  "w_d_net_outmigration", 
+  "w_d_exemptions_net_migration",
+  "w_d_exemptions_net_migration", 
   controls_1 = "t2 +l_sh_empl_mfg + sh_popfborn + sh_popedu_c",
   controls_2 = "t2 +l_sh_empl_mfg + sh_popfborn + sh_popedu_c"
 )
 
 
 baseline_controls(
-  "w_d_net_outmigration",
-  "w_d_net_outmigration"
+  "w_d_net_migration",
+  "w_d_net_migration"
 )
 baseline_controls(
   "w_d_avg_hh_diff",
