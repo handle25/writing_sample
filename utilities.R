@@ -1,9 +1,9 @@
 
-# paths 
+# paths ------------------------------------------------------------------------
 data_path <- "D:/writing_sample/data/lodes"
 # Functions --------------------------------------------------------------------
 
-winsor <- function(dt, var, p = 0.01) {
+winsor <- function(dt, var, p = 0.02) {
   q <- quantile(dt[[var]], probs = c(p, 1 - p), na.rm = TRUE)
   
   w_var <- paste0("w_", var)
@@ -50,6 +50,8 @@ make_base_year <- function(dt, var, base_year = 2000) {
 # run_lp runs regressions that are base diffs 
 # output: single shock vars 
 # can also take in no denominator vars for difference in shares as well. 
+
+## run_lp_lagged_denom ---------------------------------------------------------
 run_lp_lagged_denom <- function(
     reg,
     outcome,
@@ -203,6 +205,7 @@ run_lp_lagged_denom <- function(
 }
 
 # local projection function for multiple shocks within network 
+## run_lp_multiple_shocks ------------------------------------------------------
 run_lp_multiple_shocks <- function(
     reg,
     outcome,
@@ -223,14 +226,12 @@ run_lp_multiple_shocks <- function(
   
   # Shock lags
   reg[, `:=`(
-    l1_own_shock = shift(get(shock_1), 1),
-    l2_own_shock = shift(get(shock_1), 2),
-    l1_network_shock = shift(get(shock_2), 1),
-    l2_network_shock = shift(get(shock_2), 2),
-    l1_own_iv = shift(get(instrument_1), 1),
-    l2_own_iv = shift(get(instrument_1), 2),
-    l1_network_iv = shift(get(instrument_2), 1),
-    l2_network_iv = shift(get(instrument_2), 2)
+    l1_own_shock_1 = shift(get(shock_1), 1),
+    l2_own_shock_1 = shift(get(shock_1), 2),
+    l1_own_shock_2 = shift(get(shock_2), 1),
+    l2_own_shock_2 = shift(get(shock_2), 2),
+    l1_own_iv_1 = shift(get(instrument_1), 1),
+    l1_own_iv_2 = shift(get(instrument_2), 2)
   ), by=area_fips]
   
   reg <- reg[
@@ -271,7 +272,7 @@ run_lp_multiple_shocks <- function(
     mod <- feols(
       as.formula(paste0(
         var,
-        " ~ l1_y + l_sh_empl_mfg + l1_own_shock", controls,
+        " ~ l1_y + l_sh_empl_mfg ", controls,
         " | year + area_fips | ",
         shock_1, " + ", shock_2,
         " ~ ",
@@ -281,6 +282,7 @@ run_lp_multiple_shocks <- function(
       cluster=~area_fips + year,
       weights=~baseline_emp
     )
+    print(summary(mod, stage = 1))
     
     for (s in c(shock_1, shock_2)) {
       fit_s <- paste0("fit_", s)
@@ -328,7 +330,7 @@ run_lp_multiple_shocks <- function(
   return(results[])
 }
 
-
+## run_lp_ratio ----------------------------------------------------------------
 run_lp_ratio <- function(
     reg, 
     outcome, 
@@ -407,6 +409,7 @@ run_lp_ratio <- function(
 }
 
 # local projection function for multiple shocks - ratio outcomes
+## run_lp_ratio_multiple_shocks ------------------------------------------------
 run_lp_ratio_multiple_shocks <- function(
     reg,
     outcome,
@@ -431,6 +434,15 @@ run_lp_ratio_multiple_shocks <- function(
   reg[, l2_y := shift(y_lp,2), by=area_fips]
   reg[, l_sh_empl_mfg := shift(sh_empl_mfg), by=area_fips]
   
+  reg[, `:=`(
+    l1_own_shock_1 = shift(get(shock_1), 1),
+    l2_own_shock_1 = shift(get(shock_1), 2),
+    l1_own_shock_2 = shift(get(shock_2), 1),
+    l2_own_shock_2 = shift(get(shock_2), 2),
+    l1_own_iv_1 = shift(get(instrument_1), 1),
+    l1_own_iv_2 = shift(get(instrument_2), 2)
+  ), by=area_fips]
+  
   # LP outcomes: Y[t+h] - Y[t-1]
   for(h in horizons) {
     reg[, (paste0("diff_",h)) := shift(y_lp,h,type="lead") - l1_y, by=area_fips]
@@ -454,7 +466,7 @@ run_lp_ratio_multiple_shocks <- function(
     mod <- feols(
       as.formula(paste0(
         var,
-        " ~ l1_y + l_sh_empl_mfg", controls,
+        " ~ l1_y + l_sh_empl_mfg ", controls,
         " | year + area_fips | ",
         shock_1, " + ", shock_2,
         " ~ ", instrument_1, " + ", instrument_2

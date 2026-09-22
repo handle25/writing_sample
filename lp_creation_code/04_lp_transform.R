@@ -76,7 +76,22 @@ shock_vars <- c(
 shock_vars <- unique(shock_vars)
 
 for (i in shock_vars) winsor(reg, i)
+# Network shocks only
+network_vars <- grep("^(ex|fn)_",shock_vars,value=TRUE)
 
+# Carry 1990 network values through 1999; 2000 through 2001
+reg[, (network_vars) := lapply(.SD,function(x) {
+  y <- nafill(x,type="locf")
+  fifelse(year %between% c(1991,2001),y,x)
+}), by=area_fips,.SDcols=network_vars]
+
+# Winsorize all shocks
+for(i in shock_vars) winsor(reg,i)
+
+for(v in network_vars) {
+  reg[year %between% c(1991,1999), (v) := reg[year==1990, get(v)][match(area_fips,reg[year==1990,area_fips])]]
+  reg[year==2001, (v) := reg[year==2000, get(v)][match(area_fips,reg[year==2000,area_fips])]]
+}
 
 # Save
 fwrite(

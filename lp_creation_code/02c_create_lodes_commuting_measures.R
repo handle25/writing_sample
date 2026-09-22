@@ -11,7 +11,7 @@ path <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data/lodes"
 path <- "D:/writing_sample/data/lodes/clean_lp_full"
 output_dir <- paste0(path, "/new_clean_lp_full")
 shock <- fread(paste0(path, "/../../output/lp_weighted_qcew.csv")) |> 
-  fselect(year, IPW_US, IPW_OTH, area_fips) 
+  fselect(year, IPW_US, IPW_OTH, area_fips, baseline_emp) 
 
 url <- "https://www2.census.gov/geo/docs/reference/county_adjacency/county_adjacency2010.txt"
 
@@ -21,6 +21,35 @@ neighbors <- fread(url, sep="\t", fill=TRUE, header=FALSE,
 neighbors[, county := nafill(county, type="locf")]
 neighbors <- neighbors[, .(county, neighbor)]
 neighbors[, neighbor_merge := 1 ]
+
+# Geographic neighbor shocks --------------------------------------------------
+years <- unique(shock$year)
+
+# Create county x neighbor x year panel
+neighbors_ipw <- rbindlist(lapply(years, function(y) neighbors[
+  county != neighbor,
+  .(county,neighbor,year=y)
+]))
+
+# Attach each neighbor's shock
+neighbors_ipw <- merge(
+  neighbors_ipw,shock,
+  by.x=c("neighbor","year"),
+  by.y=c("area_fips","year"),
+  all.x=TRUE
+)
+
+setnames(neighbors_ipw,c("IPW_US","IPW_OTH"),c("neighbor_IPW_US","neighbor_IPW_OTH"))
+
+# Collapse neighbors -> home county x year
+neighbor_shock <- neighbors_ipw[, .(
+  mean_neighbor_IPW_US=mean(neighbor_IPW_US,na.rm=TRUE),
+  mean_neighbor_IPW_OTH=mean(neighbor_IPW_OTH,na.rm=TRUE),
+  empw_neighbor_IPW_US=weighted.mean(neighbor_IPW_US,baseline_emp,na.rm=TRUE),
+  empw_neighbor_IPW_OTH=weighted.mean(neighbor_IPW_OTH,baseline_emp,na.rm=TRUE)
+), by=.(area_fips=county,year)]
+
+fwrite(neighbor_shock, paste0(path, "/../../output/neighbor_shock_alltime.csv"))
 
 # Annual LODES commuting measures ---------------------------------------------
 outside <- fread(paste0(path,"/../raw/full_lodes_data_1990-2025.csv"))
@@ -154,4 +183,5 @@ out <- merge(
 )
 out <- merge(out,commuting,by=c("county","year"),all=TRUE)
 setorder(out,county,year)
+
 fwrite(out,paste0(output_dir,"/new_commuting_measures_lp_full_1990-2025.csv"))

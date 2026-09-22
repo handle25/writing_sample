@@ -20,6 +20,7 @@ acs <- fread(paste0(path, "/acs/population_1995_2023.csv"))
 # QCEW
 qcew <- fread(paste0(path, "/output/lp_weighted_qcew.csv"))
 qcew[, state := floor(area_fips / 1000)]
+neighbor_shock <- fread(paste0(path, "/output/neighbor_shock_alltime.csv"))
 
 # LAUS for unemployment --------------------------------------------------------
 laus <- read_excel(paste0(path, "/laus/laucnty90.xlsx"), skip = 1)
@@ -118,6 +119,13 @@ reg <- merge(
   all.x = TRUE
 )
 nrow(reg)
+
+reg <- merge(
+  reg,
+  neighbor_shock,
+  by = c("area_fips", "year"),
+  all.x = TRUE
+)
 
 reg <- merge(
   reg,
