@@ -443,6 +443,6 @@ irs_in[, flow := NULL]
 
 irs <- merge(irs_out, irs_in, by=c("area_fips", "year"), all=T)
 
-fwrite(irs, paste0(path, "/lp_irs_destination_conditions_full.csv"))
+fwrite(irs, paste0(path, "/new_lp_irs_destination_conditions_full.csv"))
 end <- Sys.time()
 end - start 

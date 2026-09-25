@@ -13,11 +13,7 @@ figure_4 <- T
 date <- Sys.Date()
 
 # qcewdata 
-path <- "D:/writing_sample/data"
-figs <- "D:/writing_sample/figures"
-local <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
-setwd(path)
-source(paste0(local, "/../code/writing_sample/utilities.R"))
+source(paste0("C:/Users/Sophie/Desktop/phd_apps/writing_sample/code/writing_sample/utilities.R"))
 # read in data -----------------------------------------------------------------
 reg <- fread(paste0(path, "/output/lp_transformed_reg.csv"))
 setorder(reg, area_fips, year)

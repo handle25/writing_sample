@@ -58,9 +58,13 @@ run_lp_lagged_denom(reg, outcome="exemptions_3_outflow",
 ## unemployment ----------------------------------------------------------------
 run_lp_lagged_denom(reg, outcome="unemployed", 
                     denominator="labor_force",
-                    controls="+l1_own_shock+w_ex_mean_work_IPW_US",
-                    start_year = 1998, 
+                    controls="+l1_own_shock",
+                    start_year = 2000, 
                     end_year = 2015)
+
+run_lp_ratio(reg, "w_unemployed_share_labor_force", start_year=1998, end_year=2015,
+             shock = "w_IPW_US", 
+             instrument ="w_IPW_OTH")
 
 
 lf_multi <- run_lp_multiple_shocks(
@@ -71,7 +75,6 @@ lf_multi <- run_lp_multiple_shocks(
   shock_2="w_l1_empw_neighbor_IPW_US",
   instrument_1="w_IPW_OTH",
   instrument_2="w_l1_empw_neighbor_IPW_OTH",
-  controls="+l1_own_shock",
   start_year=2000,
   end_year=2015
 )
@@ -132,7 +135,7 @@ run_lp_ratio(reg, "w_outside_jobs_share_labor_force",
 lf_multi <- run_lp_multiple_shocks(
   reg,
   outcome="outside_jobs",
-  denominator="resident_emp", # or resident_emp
+  denominator="labor_force", # or resident_emp
   shock_1="w_IPW_US",
   shock_2="w_l1_empw_neighbor_IPW_US",
   instrument_1="w_IPW_OTH",
@@ -143,7 +146,7 @@ lf_multi <- run_lp_multiple_shocks(
 )
 
 run_lp_lagged_denom(reg, outcome="outside_jobs", 
-                    denominator="resident_emp",
+                    denominator="labor_force",
                     controls="+l1_own_shock", # removed w_ex_mean_work_IPW_US 
                     start_year = 2000, 
                     end_year = 2015)
@@ -151,7 +154,7 @@ run_lp_lagged_denom(reg, outcome="outside_jobs",
 lf_multi <- run_lp_multiple_shocks(
   reg,
   outcome="outside_jobs",
-  denominator="resident_emp", # or resident_emp
+  denominator="labor_force", # or resident_emp
   shock_1="w_IPW_US",
   shock_2="w_l1_empw_neighbor_IPW_US",
   instrument_1="w_IPW_OTH",
@@ -162,11 +165,19 @@ lf_multi <- run_lp_multiple_shocks(
 )
 
 ## Migration -------------------------------------------------------------------
-run_lp_ratio(reg, "w_outside_jobs_share_labor_force", 
+run_lp_ratio(reg, "w_exemptions_net_migration_share_exemptions", 
              start_year=2000, 
              end_year=2015,
              shock = "w_IPW_US", 
              instrument ="w_IPW_OTH")
+
+run_lp_ratio(reg, "returns_net_migration_share_returns", 
+             start_year=2000, 
+             end_year=2015,
+             shock = "w_IPW_US", 
+             instrument ="w_IPW_OTH")
+
+
 
 lf_multi <- run_lp_multiple_shocks(
   reg,

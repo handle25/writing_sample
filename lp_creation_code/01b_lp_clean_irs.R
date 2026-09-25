@@ -6,7 +6,7 @@
 
 rm(list = ls())
 # Paths
-path <- "D:/writing_sample/data/irs"
+source("C:/Users/Sophie/Desktop/phd_apps/writing_sample/code/writing_sample/utilities.R")
 
 states <- tolower(state.abb)
 flows <- c("i", "o")
@@ -296,7 +296,7 @@ for (y in 4:10) {
       }
       
       # directory --------------------------------------------------------------
-      year_path <- paste0(path, "/county", y_0, y_1)
+      year_path <- paste0(path, "/irs/county", y_0, y_1)
       
       # filename ---------------------------------------------------------------
       if (y <= 6) {
@@ -355,7 +355,7 @@ for (y in 4:10) {
   
   # combine and save -----------------------------------------------------------
   irs_fill <- rbindlist(dt_list, use.names=TRUE, fill=TRUE)
-  fwrite(irs_fill, paste0(path, "/new_lp_irs_migration_", 2000 + y, ".csv"))
+  fwrite(irs_fill, paste0(path, "/irs/new_lp_irs_migration_", 2000 + y, ".csv"))
   
   print(paste("Saved year:", 2000 + y))
 }
@@ -375,7 +375,7 @@ for (y in 2011:2021) {
     f <- flows[i]
     
     # read ---------------------------------------------------------------------
-    dt <- fread(paste0(path, "/county", f, y_0, y_1, ".csv"))
+    dt <- fread(paste0(path, "/irs/county", f, y_0, y_1, ".csv"))
     
     setnames(dt, names(dt), c(
       "base_state", "base_county", "other_state", "other_county",
@@ -410,7 +410,7 @@ for (y in 2011:2021) {
   
   # combine and save -----------------------------------------------------------
   irs_fill <- rbindlist(dt_list, use.names=TRUE, fill=TRUE)
-  fwrite(irs_fill, paste0(path, "/new_lp_irs_migration_", y, ".csv"))
+  fwrite(irs_fill, paste0(path, "/irs/new_lp_irs_migration_", y, ".csv"))
   
   print(paste("Saved year:", y))
 }
@@ -418,14 +418,19 @@ for (y in 2011:2021) {
 # aggregate data ---------------------------------------------------------------
 
 dt <- rbindlist(lapply(1990:2021, function(y) {
-  fread(paste0(path, "/new_lp_irs_migration_", y, ".csv"))
+  fread(paste0(path, "/irs/new_lp_irs_migration_", y, ".csv"))
 }), use.names=TRUE, fill=TRUE)
 
 # check one total per county-year-flow -----------------------------------------
-dups <- dt[, .N, by=.(area_fips, year, flow)][N != 1]
+dups <- dt[, .N, by=.(area_fips, year, flow, exemptions_3)][N != 1]
 print(dups)
-dt <- dt[!(area_fips == 1001 & year == 1993 & flow == "inflow")]
+dt <- unique(dt)
+dups <- dt[, .N, by=.(area_fips, year, flow)][N != 1]
 
+dt <- dt[!(area_fips == 1001 & year == 1993 & flow == "inflow")]
+dt <- dt[!(area_fips == 1001 & year == 1995 & flow == "outflow")]
+dt <- dt[!(area_fips == 1001 & year == 1998 & flow == "outflow")]
+dups <- dt[, .N, by=.(area_fips, year, flow)][N != 1]
 # reshape inflow and outflow ---------------------------------------------------
 irs_wide <- dcast(
   dt,
@@ -433,4 +438,9 @@ irs_wide <- dcast(
   value.var=c("returns_3", "exemptions_3", "agi_3")
 )
 
-fwrite(irs_wide, paste0(path, "/new_lp_irs_migration_full.csv"))
+# suppressed data, set to missing 
+cols <- grep("returns|exemptions|agi", names(irs_wide), value = T)
+irs_wide[, (cols) := lapply(.SD, function(x) fifelse(x == -1, NA_real_, x)), .SDcols=cols]
+
+
+fwrite(irs_wide, paste0(path, "/irs/new_lp_irs_migration_full.csv"))

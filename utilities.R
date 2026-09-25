@@ -1,6 +1,19 @@
 
 # paths ------------------------------------------------------------------------
-data_path <- "D:/writing_sample/data/lodes"
+path <- "D:/writing_sample/data"
+local <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
+tryCatch(
+  expr = {
+    setwd(path)
+  },
+  error = function(e) {
+    # This code runs ONLY if an error occurs
+    message("can't change wd to external drive, working locally \n", e$message)
+    setwd(local)
+  }
+)
+source(paste0(local, "/../code/writing_sample/00_load_workspace.R"))
+figs <- paste0(getwd(), "/../", "figures")
 # Functions --------------------------------------------------------------------
 
 winsor <- function(dt, var, p = 0.02) {
@@ -325,6 +338,12 @@ run_lp_multiple_shocks <- function(
       theme(legend.position="bottom")
     
     print(p)
+    ggsave(
+      paste0(figs, "/differenced_multishock_lp_", outcome, "_share_", denominator, "_", shock_1, "_", date, ".pdf"),
+      p,
+      height=4,
+      width=4
+    )
   }
   
   return(results[])
@@ -520,6 +539,7 @@ run_lp_ratio_multiple_shocks <- function(
       theme(legend.position="bottom")
     
     print(p)
+    ggsave(paste0(figs, "/baseline_multishock_lp_", outcome, "_", shock_1, "_", date, ".pdf"), p, height=4, width=4)
   }
   
   return(results[])

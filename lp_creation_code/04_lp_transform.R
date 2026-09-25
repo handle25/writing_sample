@@ -7,11 +7,7 @@ rm(list = ls())
 
 # Paths ------------------------------------------------------------------------
 
-local <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
-path  <- "D:/writing_sample/data"
-setwd(path)
-
-source(paste0(local, "/../code/writing_sample/utilities.R"))
+source("C:/Users/Sophie/Desktop/phd_apps/writing_sample/code/writing_sample/utilities.R")
 
 # Basic regression variables ---------------------------------------------------
 reg <- fread(paste0(path, "/output/lp_merged.csv"))
@@ -31,7 +27,14 @@ reg[, returns_total_migration := returns_3_inflow + returns_3_outflow]
 make_share(reg, "exemptions_net_migration", "population")
 make_share(reg, "returns_net_migration", "population")
 make_share(reg, "exemptions_net_migration", "exemptions")
+make_share(reg, "exemptions_net_migration", "exemptions_total_migration")
+make_share(reg, "exemptions_3_outflow", "exemptions_total_migration")
 make_share(reg, "returns_net_migration", "returns")
+make_share(reg, "returns_3_outflow", "returns_total_migration")
+
+migration <- grep("migration", names(reg), value = T)
+for (v in migration) winsor(reg, v)
+  
 
 # Direction of migration
 make_share(reg, "exemptions_3_outflow", "exemptions_total_migration")

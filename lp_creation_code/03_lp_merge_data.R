@@ -6,12 +6,8 @@
 rm(list = ls())
 
 # Paths ------------------------------------------------------------------------
+source("C:/Users/Sophie/Desktop/phd_apps/writing_sample/code/writing_sample/utilities.R")
 
-local <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
-path  <- "D:/writing_sample/data"
-setwd(path)
-
-source(paste0(local, "/../code/writing_sample/utilities.R"))
 # Read in data -----------------------------------------------------------------
 # Population
 acs <- fread(paste0(path, "/acs/population_1995_2023.csv"))

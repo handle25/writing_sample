@@ -10,19 +10,23 @@ figure_1 <- T
 figure_2 <- T
 figure_3 <- T
 figure_4 <- T
+source("C:/Users/Sophie/Desktop/phd_apps/writing_sample/code/writing_sample/utilities.R")
 
 # qcewdata 
-
 date <- Sys.Date()
-path <- "D:/writing_sample/data"
-figs <- "D:/writing_sample/figures"
-local <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
-
 reg <- fread(paste0(path, "/output/lp_transformed_reg.csv"))
-source(paste0(local, "/../code/writing_sample/utilities.R"))
-source(paste0(local, "/../code/writing_sample/00_load_workspace.R"))
-setwd(path)
-# function definition ----------------------------------------------------------
+
+reg[, log_exemptions_total_migration := log(exemptions_3_inflow+exemptions_3_outflow)]
+reg[, log_exemptions_inflow := log(exemptions_3_inflow)]
+
+reg[, log_exemptions_inflow := log1p(exemptions_3_inflow)]
+reg[, log_exemptions_outflow := log1p(exemptions_3_outflow)]
+reg[, log_exemptions_total_migration := log1p(exemptions_3_inflow + exemptions_3_outflow)]
+
+run_lp_ratio(reg, "log_exemptions_inflow", start_year=1998, end_year=2015,
+             shock = "w_IPW_US", 
+             instrument ="w_IPW_OTH")
+
 reg[, z_IPW_US := w_IPW_US / sd(w_IPW_US,na.rm=T)]
 reg[, z_IPW_OTH := w_IPW_OTH / sd(w_IPW_OTH,na.rm=T)]
 
