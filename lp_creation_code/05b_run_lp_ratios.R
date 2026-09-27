@@ -214,8 +214,8 @@ run_lp_ratio_multiple_shocks(reg, "test", start_year=1990, end_year=2015,
 
 
 # Migration
-run_lp_ratio(reg, "exemptions_3_outflow_share_exemptions_net_migration", start_year=1990, end_year=2015)
-run_lp_ratio(reg, "exemptions_3_outflow_share_exemptions_total_migration", start_year=1990, end_year=2015)
+run_lp_ratio(reg, "w_exemptions_3_outflow_share_exemptions_net_migration", start_year=1990, end_year=2015)
+run_lp_ratio(reg, "w_exemptions_3_outflow_share_exemptions_total_migration", start_year=1998, end_year=2015)
 
 # Destination of migration
 run_lp_ratio(reg, "ew_share_into_less_unemp", start_year=1998, end_year=2007)

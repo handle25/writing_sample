@@ -56,7 +56,7 @@ cols <- setdiff(names(laus), c("area_fips", "year"))
 lodes[, (cols) := lapply(.SD, function(x) NULL), .SDcols = cols]
 
 # IRS migration ----------------------------------------------------------------
-irs <- fread(paste0(path, "/irs/new_lp_irs_migration_full.csv"))
+irs <- fread(paste0(path, "/irs/all_lp_irs_migration_full.csv"))
 
 cols <- names(irs)[sapply(irs, is.character)]
 irs[, (cols) := lapply(.SD, as.numeric), .SDcols = cols]
