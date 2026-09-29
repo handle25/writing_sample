@@ -38,7 +38,7 @@ reg[, z_ex_mean_work_IPW_OTH :=
 
 shocks <- grep("IPW", names(reg), value = T) 
 for (v in shocks) reg[, (paste0("l1_", v)) := shift(get(v), 1), by=area_fips]
-
+stop
 #destination-condition LPs ----------------------------------------------------
 reg[, outside_jobs_share_returns := outside_jobs / returns]
 winsor(reg, "outside_jobs_share_returns")
@@ -204,7 +204,7 @@ run_lp_ratio(reg, "w_exemptions_net_migration_share_population", start_year=1998
              shock = "w_ex_mean_work_IPW_US", 
              instrument ="w_ex_mean_work_IPW_OTH")
 
-reg[, test := returns_3_outflow/population]
+reg[, test := returns_3_outflow/population_2000]
 run_lp_ratio_multiple_shocks(reg, "test", start_year=1990, end_year=2015,
                              shock_1="IPW_US",
                              shock_2="mean_neighbor_IPW_US",

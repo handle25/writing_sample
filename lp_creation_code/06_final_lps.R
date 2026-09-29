@@ -138,7 +138,7 @@ lf_multi <- run_lp_multiple_shocks(
   shock_2="w_l1_empw_neighbor_IPW_US",
   instrument_1="w_IPW_OTH",
   instrument_2="w_l1_empw_neighbor_IPW_OTH",
-  controls="+l1_own_shock_1+l1_own_shock_2",
+  controls="+l1_own_shock_1",
   start_year=2000,
   end_year=2015
 )
@@ -149,257 +149,98 @@ run_lp_lagged_denom(reg, outcome="outside_jobs",
                     start_year = 2000, 
                     end_year = 2015)
 
-lf_multi <- run_lp_multiple_shocks(
+run_lp_ratio_multiple_shocks(
   reg,
-  outcome="outside_jobs",
-  denominator="labor_force", # or resident_emp
-  shock_1="w_IPW_US",
-  shock_2="w_l1_empw_neighbor_IPW_US",
-  instrument_1="w_IPW_OTH",
-  instrument_2="w_l1_empw_neighbor_IPW_OTH",
-  controls="+l1_own_shock_1+l1_own_shock_2",
-  start_year=2000,
-  end_year=2015
+  outcome = "outside_jobs_share_labor_force", 
+  shock_1 = "w_IPW_US",
+  shock_2 = "w_l1_empw_neighbor_IPW_US",
+  instrument_1 = "w_IPW_OTH",
+  instrument_2 = "w_l1_empw_neighbor_IPW_OTH",
+  controls = "",
+  start_year = 2000,
+  end_year = 2015
 )
+
 
 ## Migration -------------------------------------------------------------------
 n <- 0
-reg[, lshock_us := shift(w_IPW_US, n = n) , by = area_fips]
-reg[, lshock_oth := shift(w_IPW_OTH, n = n) , by = area_fips]
-reg[, lshock_nus := shift(w_empw_neighbor_IPW_US, n = n) , by = area_fips]
-reg[, lshock_noth := shift(w_empw_neighbor_IPW_OTH, n = n) , by = area_fips]
+reg[, net_full_migration := exemptions_3_inflow  - exemptions_3_outflow ]
+reg[, net_domestic_migration := exemptions_3_inflow - exemptions_3_outflow]
+# Same-state migration -------------------------------------------------------
+reg[, total_domestic_migration := exemptions_3_inflow + exemptions_3_outflow]
+# Net migration
 
-reg[, exemptions_3_outflow_share_population_2000 :=exemptions_3_outflow/population_2000 ]
-setorder(reg, area_fips, year)
-reg[, cumulative_outflows := cumsum(exemptions_3_outflow), by = area_fips]
-reg[, cumulative_inflows := cumsum(exemptions_3_inflow), by = area_fips]
-
-reg[, cumulative_net_migration := cumsum(returns_net_migration), by = area_fips]
-reg[, cumulative_total_migration := cumsum(exemptions_total_migration), by = area_fips]
-reg[, coverage_gap := (population - exemptions)/population]
-
-reg[, exemptions_y1 := shift(exemptions, n = 1 , type = "lead"), by = area_fips]
+# Cumulative net migration
 setorder(reg, area_fips, year)
 
-# Shift IRS migration measures forward one year
-# New year t contains the IRS measure previously labeled t-1
-irs_vars <- c(
-  "exemptions",
-  "exemptions_3_inflow",
-  "exemptions_3_outflow",
-  "returns",
-  "returns_3_inflow",
-  "returns_3_outflow"
-)
+reg[year >= 1995, cum_net_full_mig := cumsum(net_full_migration), by = area_fips]
+reg[year >= 1995, cum_net_domestic_mig := cumsum(net_domestic_migration), by = area_fips]
+reg[year >= 1995, cum_domestic_mig := cumsum(total_domestic_migration), by = area_fips]
+reg[year >= 1995, cum_domestic_inflow := cumsum(exemptions_3_inflow), by = area_fips]
+reg[year >= 1995, cum_domestic_outflow := cumsum(exemptions_3_outflow), by = area_fips]
+reg[year >= 1995, cum_same_inflow := cumsum(exemptions_same_state_inflow), by = area_fips]
+reg[year >= 1995, cum_same_outflow := cumsum(exemptions_same_state_outflow), by = area_fips]
+reg[year >= 1998, cum_exemptions := cumsum(exemptions), by = area_fips]
 
-setorder(reg, area_fips, year)
+reg[, cum_total_domestic_migration := cum_domestic_inflow + cum_domestic_outflow]
+reg[, cum_net_full_mig_share_population := cum_net_full_mig / population]
+reg[, cum_net_domestic_mig_share_population := cum_net_domestic_mig / population]
+reg[, cum_domestic_inflow_share_population := cum_domestic_inflow / population]
+reg[, cum_domestic_outflow_share_population := cum_domestic_outflow / population]
+reg[, cum_same_inflow_share_population := cum_same_inflow / population]
+reg[, cum_same_outflow_share_population := cum_same_outflow / population]
+reg[, cum_net_full_mig_share_migration := cum_net_full_mig / cum_total_domestic_migration]
+reg[, cum_net_domestic_mig_share_migration := cum_net_domestic_mig / cum_total_domestic_migration]
+reg[, cum_domestic_inflow_share_migration := cum_domestic_inflow / cum_total_domestic_migration]
+reg[, cum_domestic_outflow_share_migration := cum_domestic_outflow / cum_total_domestic_migration]
+reg[, cum_same_inflow_share_migration := cum_same_inflow / cum_total_domestic_migration]
+reg[, cum_same_outflow_share_migration := cum_same_outflow / cum_total_domestic_migration]
+reg[, cum_net_full_mig_share_nonmigration := cum_net_full_mig / exemptions]
+reg[, cum_net_domestic_mig_share_nonmigration := cum_net_domestic_mig / exemptions]
+reg[, cum_domestic_inflow_share_nonmigration := cum_domestic_inflow / exemptions]
+reg[, cum_domestic_outflow_share_nonmigration := cum_domestic_outflow / exemptions]
+reg[, cum_same_inflow_share_nonmigration := cum_same_inflow / exemptions]
+reg[, cum_same_outflow_share_nonmigration := cum_same_outflow / exemptions]
 
-# First construct cumulative series using original IRS labeling
-reg[, cumulative_outflows :=
-      cumsum(exemptions_3_outflow),
-    by = area_fips]
+winsor(reg, "cum_net_full_mig_share_population", p = .01)
+winsor(reg, "cum_net_domestic_mig_share_population", p = .01)
+winsor(reg, "cum_domestic_inflow_share_population", p = .01)
+winsor(reg, "cum_domestic_outflow_share_population", p = .01)
+winsor(reg, "cum_same_inflow_share_population", p = .01)
+winsor(reg, "cum_same_outflow_share_population", p = .01)
+winsor(reg, "cum_net_full_mig_share_migration", p = .01)
+winsor(reg, "cum_net_domestic_mig_share_migration", p = .01)
+winsor(reg, "cum_domestic_inflow_share_migration", p = .01)
+winsor(reg, "cum_domestic_outflow_share_migration", p = .01)
+winsor(reg, "cum_same_inflow_share_migration", p = .01)
+winsor(reg, "cum_same_outflow_share_migration", p = .01)
+winsor(reg, "cum_net_full_mig_share_nonmigration", p = .01)
+winsor(reg, "cum_net_domestic_mig_share_nonmigration", p = .01)
+winsor(reg, "cum_domestic_inflow_share_nonmigration", p = .01)
+winsor(reg, "cum_domestic_outflow_share_nonmigration", p = .01)
+winsor(reg, "cum_same_inflow_share_nonmigration", p = .01)
+winsor(reg, "cum_same_outflow_share_nonmigration", p = .01)
+winsor(reg, "cum_net_domestic_mig")
+winsor(reg, "cum_net_full_mig", p = .01)
 
-reg[, cumulative_inflows :=
-      cumsum(exemptions_3_inflow),
-    by = area_fips]
-
-reg[, cumulative_net_migration :=
-      cumsum(returns_3_inflow - returns_3_outflow),
-    by = area_fips]
-
-reg[, cumulative_total_migration :=
-      cumsum(exemptions_same_state_outflow + exemptions_same_state_inflow),
-    by = area_fips]
-setorder(reg, area_fips, year)
-
-# Same-state migration ---------------------------------------------------------
-
-reg[
-  year >= 1995,
-  cumulative_same_state_outflows :=
-    cumsum(exemptions_same_state_outflow),
-  by = area_fips
-]
-
-reg[
-  year >= 1995,
-  cumulative_same_state_inflows :=
-    cumsum(exemptions_same_state_inflow),
-  by = area_fips
-]
-
-reg[
-  year >= 1995,
-  cumulative_same_state_migration :=
-    cumsum(
-      exemptions_same_state_outflow +
-        exemptions_same_state_inflow
-    ),
-  by = area_fips
-]
-
-
-# Different-state migration ----------------------------------------------------
-run_lp_ratio(reg, "returns_3_outflow_share_returns_total_migration")
-setorder(reg, area_fips, year)
-reg[, cumulative_exemptions_outflow := cumsum(exemptions_3_outflow), by = area_fips]
-reg[, cum_ex_net_migration := cumsum(exemptions_net_migration), by = area_fips]
-run_lp_lagged_denom(reg, "total_migration", 
-                    denom = "population", 
-                    start_year = 1998, 
-                    end_year = 2015, horizons = 0:10)
-
-
-
-reg[, exemptions_share_population := exemptions / population]
-
-
-run_lp_ratio(reg, "exemptions_share_population", end_year = 2015)
-lf_multi <- run_lp_multiple_shocks(
+# Full
+lp_full_mig <- run_lp_multiple_shocks(
   reg,
-  outcome="exemptions_total_migration",
-  denominator =  "population", 
-  shock_1="w_IPW_US",
-  shock_2="w_l1_empw_neighbor_IPW_US",
-  instrument_1="w_IPW_OTH",
-  instrument_2="w_l1_empw_neighbor_IPW_OTH",
-  start_year=1995,
-  end_year=2015
-)
-
-n <- 5
-reg[, l_shock_us := shift(w_IPW_US, n = n), by = area_fips]
-reg[, l_shock_ot := shift(w_IPW_OTH, n = n), by = area_fips]
-
-reg[, l_nshock_us := shift(w_l1_empw_neighbor_IPW_US, n = n), by = area_fips]
-reg[, l_nshock_ot := shift(w_l1_empw_neighbor_IPW_OTH, n = n), by = area_fips]
-
-lf_multi <- run_lp_ratio_multiple_shocks(
-  reg,
-  outcome="ew_share_into_less_unemp",
-  shock_1="l_shock_us",
-  shock_2="l_nshock_us",
-  instrument_1="l_shock_ot",
-  instrument_2="l_nshock_ot",
-  start_year=1995,
-  end_year=2015
-)
-
-
-
-
-
-
-
-exit 
-reg[
-  year >= 1995,
-  cumulative_diff_state_outflows :=
-    cumsum(exemptions_diff_state_outflow),
-  by = area_fips
-]
-
-reg[
-  year >= 1995,
-  cumulative_diff_state_inflows :=
-    cumsum(exemptions_diff_state_inflow),
-  by = area_fips
-]
-
-reg[
-  year >= 1995,
-  cumulative_diff_state_migration :=
-    cumsum(
-      exemptions_diff_state_outflow +
-        exemptions_diff_state_inflow
-    ),
-  by = area_fips
-]
-# Then relabel those cumulative series one year forward
-cum_vars <- c(
-  "cumulative_outflows",
-  "cumulative_inflows",
-  "cumulative_net_migration",
-  "cumulative_total_migration"
-)
-
-reg[, paste0(cum_vars, "_y1") :=
-      lapply(.SD, shift, n = 1),
-    by = area_fips,
-    .SDcols = cum_vars]
-
-winsor(reg, "cumulative_outflows_y1")
-run_lp_lagged_denom(
-  reg,
-  outcome = "exemptions_same_state_outflow",
+  outcome = "w_cum_net_full_mig",
   denominator = "population",
-  controls = "+l1_own_shock",
+  shock_1 = "w_IPW_US",
+  shock_2 = "w_l1_empw_neighbor_IPW_US",
+  instrument_1 = "w_IPW_OTH",
+  instrument_2 = "w_l1_empw_neighbor_IPW_OTH",
   start_year = 1995,
   end_year = 2015
 )
 
-winsor(reg, "exemptions_3_outflow_share_population_2000")
-lf_multi <- run_lp_ratio_multiple_shocks(
+
+
+lp_full_mig <- run_lp_ratio_multiple_shocks(
   reg,
-  outcome="cumulative_total_migration",
-  shock_1="lshock_us",
-  shock_2="lshock_nus",
-  instrument_1="lshock_oth",
-  instrument_2="lshock_noth",
-  start_year=1998,
-  end_year=2007, 
-  horizons = 0:7
-)
-
-run_lp_lagged_denom(reg, outcome="cumulative_outflows", 
-                    denominator="population",
-                    controls="", # removed w_ex_mean_work_IPW_US 
-                    start_year = 1998, 
-                    end_year = 2015)
-
-
-lf_multi <- run_lp_ratio_multiple_shocks(
-  reg,
-  outcome="coverage_gap",
-  shock_1="w_IPW_US",
-  shock_2="w_l1_empw_neighbor_IPW_US",
-  instrument_1="w_IPW_OTH",
-  instrument_2="w_l1_empw_neighbor_IPW_OTH",
-  start_year=2000,
-  end_year=2015
-)
-
-winsor(reg, "coverage_gap")
-run_lp_ratio(reg, "cumulative_outflows_y1", 
-             start_year=2000, 
-             end_year=2015,
-             shock = "w_IPW_US", 
-             instrument ="w_IPW_OTH")
-
-run_lp_lagged_denom(reg, outcome="outside_jobs", 
-                    denominator="resident_emp",
-                    controls="+l1_own_shock", # removed w_ex_mean_work_IPW_US 
-                    start_year = 2000, 
-                    end_year = 2015)
-
-lf_multi <- run_lp_multiple_shocks(
-  reg,
-  outcome="cumulative_total_migration",
-  denominator="population", # or resident_emp
-  shock_1="w_IPW_US",
-  shock_2="w_l1_empw_neighbor_IPW_US",
-  instrument_1="w_IPW_OTH",
-  instrument_2="w_l1_empw_neighbor_IPW_OTH",
-  controls="",
-  start_year=1995,
-  end_year=2015
-)
-
-# cumulative SAME-STATE outflows
-out_same <- run_lp_multiple_shocks(
-  reg,
-  outcome = "cumulative_same_state_outflows",
-  denominator = "population",
+  outcome = "w_cum_domestic_outflow_share_migration",
   shock_1 = "w_IPW_US",
   shock_2 = "w_l1_empw_neighbor_IPW_US",
   instrument_1 = "w_IPW_OTH",
@@ -409,11 +250,10 @@ out_same <- run_lp_multiple_shocks(
   end_year = 2015
 )
 
-# cumulative DIFFERENT-STATE outflows
-out_diff <- run_lp_multiple_shocks(
+lp_full_mig <- run_lp_multiple_shocks(
   reg,
-  outcome = "cumulative_diff_state_outflows",
-  denominator = "population",
+  outcome = "cum_domestic_outflow",
+  denominator = "exemptions", 
   shock_1 = "w_IPW_US",
   shock_2 = "w_l1_empw_neighbor_IPW_US",
   instrument_1 = "w_IPW_OTH",

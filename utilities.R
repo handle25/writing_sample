@@ -544,3 +544,412 @@ run_lp_ratio_multiple_shocks <- function(
   
   return(results[])
 }
+
+################################################################################
+# Heterogeneous LP — two shocks / two instruments
+################################################################################
+
+run_lp_ratio_multiple_shocks_heterogeneity <- function(
+    reg,
+    outcome,
+    group_var,
+    shock_1 = "w_IPW_US",
+    shock_2 = "w_ex_mean_dest_IPW_US",
+    instrument_1 = "w_IPW_OTH",
+    instrument_2 = "w_ex_mean_dest_IPW_OTH",
+    start_year = 2000,
+    end_year = 2015,
+    horizons = 0:7,
+    controls = "",
+    figure = TRUE
+) {
+  
+  reg <- copy(reg)
+  
+  reg <- reg[
+    !is.na(get(outcome)) &
+      !is.na(get(group_var)) &
+      year <= end_year + max(horizons)
+  ]
+  
+  reg <- reg[
+    area_fips %in%
+      reg[, .N, by = area_fips][
+        N == length(unique(reg$year)),
+        area_fips
+      ]
+  ]
+  
+  setorder(reg, area_fips, year)
+  
+  # Outcome and lags
+  reg[, y_lp := get(outcome)]
+  reg[, l1_y := shift(y_lp), by = area_fips]
+  reg[, l2_y := shift(y_lp, 2), by = area_fips]
+  reg[, l_sh_empl_mfg := shift(sh_empl_mfg), by = area_fips]
+  
+  # Shock lags
+  reg[, `:=`(
+    l1_own_shock_1 = shift(get(shock_1), 1),
+    l2_own_shock_1 = shift(get(shock_1), 2),
+    l1_own_shock_2 = shift(get(shock_2), 1),
+    l2_own_shock_2 = shift(get(shock_2), 2),
+    l1_own_iv_1 = shift(get(instrument_1), 1),
+    l1_own_iv_2 = shift(get(instrument_2), 2)
+  ), by = area_fips]
+  
+  # LP outcomes
+  for (h in horizons) {
+    reg[, (paste0("diff_", h)) :=
+          shift(y_lp, h, type = "lead") - l1_y,
+        by = area_fips]
+  }
+  
+  # Estimation period
+  reg_est <- reg[year %in% start_year:end_year]
+  
+  # Winsorize separately within each heterogeneity group
+  for (h in horizons) {
+    
+    var <- paste0("diff_", h)
+    wvar <- paste0("w_", var)
+    
+    reg_est[, (wvar) := {
+      q <- quantile(
+        get(var),
+        probs = c(.01, .99),
+        na.rm = TRUE
+      )
+      pmin(pmax(get(var), q[1]), q[2])
+    }, by = group_var]
+  }
+  
+  # Results table
+  groups <- unique(reg_est[[group_var]])
+  
+  results <- CJ(
+    h = horizons,
+    group = groups,
+    shock = c(shock_1, shock_2)
+  )
+  
+  results[, `:=`(
+    coef = NA_real_,
+    se = NA_real_,
+    N = NA_integer_
+  )]
+  
+  # LPs by group
+  for (g in groups) {
+    
+    for (hh in horizons) {
+      
+      var <- paste0("w_diff_", hh)
+      
+      mod <- feols(
+        as.formula(
+          paste0(
+            var,
+            " ~ l1_y + l_sh_empl_mfg ", controls,
+            " | year + area_fips | ",
+            shock_1, " + ", shock_2,
+            " ~ ",
+            instrument_1, " + ", instrument_2
+          )
+        ),
+        data = reg_est[get(group_var) == g],
+        cluster = ~area_fips + year,
+        weights = ~baseline_emp
+      )
+      
+      for (s in c(shock_1, shock_2)) {
+        
+        fit_s <- paste0("fit_", s)
+        
+        results[
+          h == hh & group == g & shock == s,
+          `:=`(
+            coef = coef(mod)[fit_s],
+            se = se(mod)[fit_s],
+            N = nobs(mod)
+          )
+        ]
+      }
+    }
+  }
+  
+  # Confidence intervals
+  results[, `:=`(
+    lower90 = coef - 1.64 * se,
+    upper90 = coef + 1.64 * se,
+    lower95 = coef - 1.96 * se,
+    upper95 = coef + 1.96 * se
+  )]
+  
+  # Labels
+  results[, shock_label :=
+            fifelse(
+              shock == shock_1,
+              "Own-county exposure",
+              "Commuting-network exposure"
+            )]
+  
+  # Plot
+  if (figure) {
+    
+    p <- ggplot(
+      results,
+      aes(
+        x = h,
+        y = coef,
+        color = shock_label,
+        fill = shock_label
+      )
+    ) +
+      geom_hline(
+        yintercept = 0,
+        linetype = "dashed"
+      ) +
+      geom_ribbon(
+        aes(
+          ymin = lower95,
+          ymax = upper95
+        ),
+        alpha = .10,
+        color = NA
+      ) +
+      geom_ribbon(
+        aes(
+          ymin = lower90,
+          ymax = upper90
+        ),
+        alpha = .18,
+        color = NA
+      ) +
+      geom_line(linewidth = .8) +
+      geom_point(size = 2) +
+      scale_x_continuous(
+        breaks = horizons
+      ) +
+      facet_wrap(
+        ~group,
+        scales = "free_y"
+      ) +
+      labs(
+        x = "Horizon",
+        y = "Coefficient",
+        color = NULL,
+        fill = NULL
+      ) +
+      theme_minimal() +
+      theme(
+        legend.position = "bottom"
+      )
+    
+    print(p)
+  }
+  
+  return(results[])
+}
+################################################################################
+# Heterogeneous LP — lagged denominator, two shocks / two instruments
+################################################################################
+
+run_lp_multiple_shocks_heterogeneity <- function(
+    reg,
+    outcome,
+    denominator,
+    group_var,
+    shock_1 = "w_IPW_US",
+    shock_2 = "w_ex_mean_dest_IPW_US",
+    instrument_1 = "w_IPW_OTH",
+    instrument_2 = "w_ex_mean_dest_IPW_OTH",
+    start_year = 2000,
+    end_year = 2007,
+    horizons = 0:7,
+    controls = "",
+    figure = TRUE
+) {
+  
+  reg <- copy(reg)
+  setorder(reg, area_fips, year)
+  
+  # Shock lags
+  reg[, `:=`(
+    l1_own_shock_1 = shift(get(shock_1), 1),
+    l2_own_shock_1 = shift(get(shock_1), 2),
+    l1_own_shock_2 = shift(get(shock_2), 1),
+    l2_own_shock_2 = shift(get(shock_2), 2),
+    l1_own_iv_1 = shift(get(instrument_1), 1),
+    l2_own_iv_1 = shift(get(instrument_1), 2),
+    l1_own_iv_2 = shift(get(instrument_2), 1),
+    l2_own_iv_2 = shift(get(instrument_2), 2)
+  ), by = area_fips]
+  
+  # Balanced panel
+  reg <- reg[
+    area_fips %in%
+      reg[, .N, by = area_fips][
+        N == length(unique(reg$year)),
+        area_fips
+      ]
+  ]
+  
+  # Outcome and lags
+  reg[, y_lp := get(outcome)]
+  reg[, y_control := get(outcome) / get(denominator) * 100]
+  reg[, l1_y := shift(y_control, 1), by = area_fips]
+  reg[, l2_y := shift(y_control, 2), by = area_fips]
+  reg[, l_sh_empl_mfg := shift(sh_empl_mfg), by = area_fips]
+  
+  # Lagged denominator
+  reg[, denom := shift(get(denominator), 1), by = area_fips]
+  
+  # LP outcomes
+  for (h in horizons) {
+    reg[, (paste0("diff_", h)) :=
+          (shift(y_lp, h, type = "lead") - shift(y_lp, 1)) /
+          denom * 100,
+        by = area_fips]
+  }
+  
+  # Estimation sample
+  reg_est <- reg[
+    year %in% start_year:end_year &
+      !is.na(get(group_var))
+  ]
+  
+  # Winsorize within heterogeneity group x horizon
+  for (h in horizons) {
+    
+    var <- paste0("diff_", h)
+    wvar <- paste0("w_", var)
+    
+    reg_est[, (wvar) := {
+      q <- quantile(
+        get(var),
+        probs = c(.01, .99),
+        na.rm = TRUE
+      )
+      pmin(pmax(get(var), q[1]), q[2])
+    }, by = group_var]
+  }
+  
+  # Results
+  groups <- unique(reg_est[[group_var]])
+  
+  results <- CJ(
+    h = horizons,
+    group = groups,
+    shock = c(shock_1, shock_2)
+  )
+  
+  results[, `:=`(
+    coef = NA_real_,
+    se = NA_real_,
+    N = NA_integer_
+  )]
+  
+  # LP regressions
+  for (g in groups) {
+    
+    for (hh in horizons) {
+      
+      var <- paste0("w_diff_", hh)
+      
+      mod <- feols(
+        as.formula(
+          paste0(
+            var,
+            " ~ l1_y + l_sh_empl_mfg ", controls,
+            " | year + area_fips | ",
+            shock_1, " + ", shock_2,
+            " ~ ",
+            instrument_1, " + ", instrument_2
+          )
+        ),
+        data = reg_est[get(group_var) == g],
+        cluster = ~area_fips + year,
+        weights = ~baseline_emp
+      )
+      
+      for (s in c(shock_1, shock_2)) {
+        
+        fit_s <- paste0("fit_", s)
+        
+        results[
+          h == hh & group == g & shock == s,
+          `:=`(
+            coef = coef(mod)[fit_s],
+            se = se(mod)[fit_s],
+            N = nobs(mod)
+          )
+        ]
+      }
+    }
+  }
+  
+  # Confidence intervals
+  results[, `:=`(
+    lower90 = coef - 1.64 * se,
+    upper90 = coef + 1.64 * se,
+    lower95 = coef - 1.96 * se,
+    upper95 = coef + 1.96 * se
+  )]
+  
+  results[, shock_label :=
+            fifelse(
+              shock == shock_1,
+              "Own-county exposure",
+              "Neighbor exposure"
+            )]
+  
+  # Plot
+  if (figure) {
+    
+    p <- ggplot(
+      results,
+      aes(
+        x = h,
+        y = coef,
+        color = shock_label,
+        fill = shock_label
+      )
+    ) +
+      geom_hline(
+        yintercept = 0,
+        linetype = "dashed"
+      ) +
+      geom_ribbon(
+        aes(ymin = lower95, ymax = upper95),
+        alpha = .10,
+        color = NA
+      ) +
+      geom_ribbon(
+        aes(ymin = lower90, ymax = upper90),
+        alpha = .18,
+        color = NA
+      ) +
+      geom_line(linewidth = .8) +
+      geom_point(size = 2) +
+      scale_x_continuous(breaks = horizons) +
+      facet_wrap(
+        ~group,
+        scales = "free_y"
+      ) +
+      labs(
+        x = "Horizon",
+        y = "Coefficient",
+        color = NULL,
+        fill = NULL
+      ) +
+      theme_minimal() +
+      theme(
+        legend.position = "bottom"
+      )
+    
+    print(p)
+  }
+  
+  return(results[])
+}

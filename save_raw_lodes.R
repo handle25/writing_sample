@@ -25,11 +25,13 @@ rm(list = ls())
 ################################################################################
 
 data_path <- "D:/writing_sample/data/lodes"
+path <- data_path
 output_dir <- paste0(path, "/raw")
 
 # States and years -------------------------------------------------------------
 states <- tolower(state.abb)
 years <- 2002:2025
+
 # Pull and collapse ------------------------------------------------------------
 for (s in states) {
   

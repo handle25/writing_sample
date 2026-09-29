@@ -7,6 +7,19 @@ figs <- "D:/writing_sample/figures"
 reg <- fread(paste0(path, "/output/transformed_reg.csv"))
 ## shock  ----------------------------------------------------------------------
 file <- paste0(figs, "/shock_distribution.tex")
+names_dict <- c(
+  "w_d_labor_force_share_population" = "$\\Delta$ Labor Force Participation",
+  "w_d_unemployed_share_labor_force" = "$\\Delta$ Unemployment Rate",
+  "w_d_outside_jobs_share_population" = "$\\Delta$ Outside-County Employment / Population",
+  "w_d_exemptions_net_migration_share_population" = "$\\Delta$ Net Migration / Population"
+)
+
+to_summarize <- c(
+  "w_d_labor_force_share_population",
+  "w_d_unemployed_share_labor_force",
+  "w_d_outside_jobs_share_population",
+  "w_d_exemptions_net_migration_share_population"
+)
 p <- c(.01,.05,.25,.50,.75,.90,.99) 
 d <- 2 
 sum07 <- round(quantile(reg[year==2007, w_IPW_US], p = p, na.rm = T), d)
@@ -31,8 +44,8 @@ file <- paste0(figs, "/dep_var_distribution.tex")
 p <- c(.01,.25,.50,.75,.99)
 d <- 2
 
-to_summarize <- c("w_d_labor_force_share_population", "w_d_unemployed_share_labor_force",
-                  "w_d_outside_jobs_share_population", "w_d_net_outmigration")
+# to_summarize <- c("w_d_labor_force_share_population", "w_d_unemployed_share_labor_force",
+                  # "w_d_outside_jobs_share_population", "w_d_net_outmigration")
 
 cat("\\begin{tabular}{l", rep("c", length(p)), "c} \n", file=file)
 cat("\\toprule \n & \\multicolumn{", length(p), "}{c}{Percentile} & \\\\ \n \\cmidrule{2-6}\n", file=file, append=T)
@@ -41,7 +54,7 @@ cat(" & 1 & 25 & 50 & 75 & 99 & Mean \\\\\n \\midrule\n", file=file, append=T)
 cat("\\multicolumn{7}{l}{\\textit{Panel A: 2000--2007}} \\\\\n", file=file, append=T)
 for (v in to_summarize) {
   q <- round(quantile(reg[year %in% 2000:2007, get(v)], p=p, na.rm=T), d)
-  m <- round(mean(reg[year %in% 2000:2007, get(v)], na.rm=T), 3)
+  m <- round(weighted.mean(reg[year %in% 2000:2007, get(v)], reg[year %in% 2000:2007, baseline_emp], na.rm=T), 3)
   cat(names_dict[v], q, m, sep="&", file=file, append=T)
   cat("\\\\\n", file=file, append=T)
 }
@@ -57,7 +70,7 @@ for (v in to_summarize) {
 
 cat("\\bottomrule \n\\end{tabular}", file=file, append=T)
 
-stop()
+
 # local projections 
 reg <- fread(paste0(path, "/output/lp_transformed_reg.csv"))
 
@@ -114,3 +127,36 @@ ggplot(laus, aes(
   y = lfp
 ))+ 
   geom_line()
+reg <- fread(paste0(path, "/output/lp_transformed_reg.csv"))
+winsor(reg, "neighbor_IPW_US", p = .03)
+
+# reg <- fread(paste0(path, "/output/transformed_reg.csv"))
+# Pull US county shapefile
+counties <- counties(cb = TRUE, year = 2020, class = "sf")
+
+# Drop AK, HI, PR, and territories
+counties <- counties[!counties$STATEFP %in% c("02", "15", "60", "66", "69", "72", "78"), ]
+
+# Make FIPS compatible with reg
+counties$area_fips <- as.integer(counties$GEOID)
+
+# Pick year and variable to map
+map_data <- reg[year == 2007, .(area_fips, value = w_ex_mean_neighbor_IPW_US)]
+
+# Merge data onto geometry
+map_sf <- merge(counties, map_data, by = "area_fips", all.x = TRUE)
+
+# Plot
+ggplot(map_sf) +
+  geom_sf(aes(fill = value), color = NA) +
+  scale_fill_viridis_c(option = "magma", na.value = "grey90") +
+  coord_sf(datum = NA) +
+  labs(
+    fill = "Import exposure",
+    title = "Import Exposure Across U.S. Counties"
+  ) +
+  theme_void() +
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(hjust = 0.5)
+  )
