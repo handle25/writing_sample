@@ -16,7 +16,7 @@ source(paste0(local, "/../code/writing_sample/00_load_workspace.R"))
 figs <- paste0(getwd(), "/../", "figures")
 # Functions --------------------------------------------------------------------
 
-winsor <- function(dt, var, p = 0.02) {
+winsor <- function(dt, var, p = 0.01) {
   q <- quantile(dt[[var]], probs = c(p, 1 - p), na.rm = TRUE)
   
   w_var <- paste0("w_", var)

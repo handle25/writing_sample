@@ -127,8 +127,15 @@ ggplot(laus, aes(
   y = lfp
 ))+ 
   geom_line()
+
 reg <- fread(paste0(path, "/output/lp_transformed_reg.csv"))
-winsor(reg, "neighbor_IPW_US", p = .03)
+winsor(reg, "mean_neighbor_IPW_US", p = .03)
+
+
+
+var <- "com_outside_share_all"
+reg[, diff_var := get(var) - shift(get(var)), by = area_fips]
+winsor(reg, "diff_var") 
 
 # reg <- fread(paste0(path, "/output/transformed_reg.csv"))
 # Pull US county shapefile
@@ -141,7 +148,7 @@ counties <- counties[!counties$STATEFP %in% c("02", "15", "60", "66", "69", "72"
 counties$area_fips <- as.integer(counties$GEOID)
 
 # Pick year and variable to map
-map_data <- reg[year == 2007, .(area_fips, value = w_ex_mean_neighbor_IPW_US)]
+map_data <- reg[year == 2007, .(area_fips, value = w_diff_var)]
 
 # Merge data onto geometry
 map_sf <- merge(counties, map_data, by = "area_fips", all.x = TRUE)
@@ -160,3 +167,5 @@ ggplot(map_sf) +
     legend.position = "bottom",
     plot.title = element_text(hjust = 0.5)
   )
+
+ggsave(paste0(path, "/../figures/map_", var, ".pdf"))

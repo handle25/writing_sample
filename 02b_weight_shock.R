@@ -358,6 +358,49 @@ base <- merge(
 # save file 
 fwrite(base, paste0(path, "/output/weighted_qcew.csv"))
 
+# Geographic neighboring-county shocks ----------------------------------------
+
+shock <- base[, .(year, area_fips, workplace_emp, IPW_US, IPW_OTH, IPW_US_10yr, IPW_OTH_10yr)]
+shock[, area_fips := as.integer(area_fips)]
+url <- "https://www2.census.gov/geo/docs/reference/county_adjacency/county_adjacency2010.txt"
+neighbors <- fread(url, sep="\t", fill=TRUE, header=FALSE,
+                   col.names=c("county_name", "county", "neighbor_name", "neighbor"))
+
+neighbors[, county := nafill(county, type="locf")]
+neighbors <- neighbors[, .(county, neighbor)]
+neighbors <- neighbors[county != neighbor]
+
+# Create county x neighbor x year panel
+neighbors_ipw <- merge(
+  CJ(county=unique(neighbors$county), year=unique(shock$year)),
+  neighbors,
+  by="county",
+  allow.cartesian=TRUE
+)
+
+# Attach each neighbor's shocks
+neighbors_ipw <- merge(
+  neighbors_ipw, shock,
+  by.x=c("neighbor", "year"),
+  by.y=c("area_fips", "year"),
+  all.x=TRUE
+)
+
+# Collapse to home county x year
+neighbor_shock <- neighbors_ipw[, .(
+  mean_neighbor_IPW_US=mean(IPW_US, na.rm=TRUE),
+  mean_neighbor_IPW_OTH=mean(IPW_OTH, na.rm=TRUE),
+  empw_neighbor_IPW_US=weighted.mean(IPW_US, workplace_emp, na.rm=TRUE),
+  empw_neighbor_IPW_OTH=weighted.mean(IPW_OTH, workplace_emp, na.rm=TRUE),
+  mean_neighbor_IPW_US_10yr=mean(IPW_US_10yr, na.rm=TRUE),
+  mean_neighbor_IPW_OTH_10yr=mean(IPW_OTH_10yr, na.rm=TRUE),
+  empw_neighbor_IPW_US_10yr=weighted.mean(IPW_US_10yr, workplace_emp, na.rm=TRUE),
+  empw_neighbor_IPW_OTH_10yr=weighted.mean(IPW_OTH_10yr, workplace_emp, na.rm=TRUE)
+), by=.(area_fips=county, year)]
+
+fwrite(neighbor_shock, paste0(path, "/output/neighbor_shock_longdiff.csv"))
+
+
 exit 
 # check regs 2007 --------------------------------------------------------------
 reg <- base[year %in% c(2000, 2007), ]# Period indicator

@@ -54,6 +54,9 @@ make_base_year <- function(dt, var, base_year = 2000) {
 acs <- fread(paste0(path, "/acs/population_1995_2023.csv"))
 
 make_base_year(acs, "population")
+# Geographic neighbor shocks --------------------------------------------------
+neighbor_shock <- fread(paste0(path, "/output/neighbor_shock_longdiff.csv"))
+neighbor_shock[, area_fips := as.integer(area_fips)]
 
 # census controls --------------------------------------------------------------
 census <- fread(
@@ -205,7 +208,7 @@ lodes[, (laus_vars) := NULL]
 lodes <- lodes[year != 2002]
 lodes[year == 1990, year := 1995]
 # IRS --------------------------------------------------------------------------
-irs <- fread(paste0(path, "/irs/new_lp_irs_migration_full.csv"))
+irs <- fread(paste0(path, "/irs/all_lp_irs_migration_full.csv"))
 
 ## immigration destination measures 
 irs_detail <- fread(paste0(path, "/irs/lp_irs_destination_conditions_full.csv"))
@@ -273,6 +276,13 @@ reg <- merge(
 )
 
 nrow(reg)
+
+reg <- merge(
+  reg,
+  neighbor_shock,
+  by=c("area_fips", "year"),
+  all.x=TRUE
+)
 
 reg <- merge(
   reg,
