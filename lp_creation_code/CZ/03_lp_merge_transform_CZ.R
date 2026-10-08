@@ -204,7 +204,11 @@ irs[,c("fips", "county", "area_fips") := NULL]
 irs <- irs |> 
   fgroup_by(commuting_zone_id_2000,  year) |> 
   fsum()
+# Merge CZ commuting and neighboring shocks ----------------------------------
 
+commuting <- fread(paste0(path, "/output/new_commuting_measures_CZ_1990-2025.csv"))
+
+stopifnot(!anyDuplicated(commuting[, .(commuting_zone_id_2000, year)]))
 
 # Merge datasets ---------------------------------------------------------------
 
@@ -239,6 +243,9 @@ reg <- merge(
   by = c("commuting_zone_id_2000","year"), 
   all.x = TRUE
 )
+
+reg <- merge(reg, commuting,
+             by=c("commuting_zone_id_2000", "year"), all.x=TRUE)
 
 setorder(
   reg,

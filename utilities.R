@@ -42,19 +42,19 @@ share_denom_all <- function(dt, var) {
   make_share(dt, var, "population")
 }
 
-make_base_year <- function(dt, var, base_year = 2000) {
+make_base_year <- function(dt, var, base_year = 2000, unit = "area_fips") {
   newvar <- paste0(var, "_", base_year)
   
   dt_year <- dt[
     year == base_year,
     .(value = mean(get(var), na.rm = TRUE)),
-    by = area_fips
+    by = unit
   ]
   
   setnames(dt_year, "value", newvar)
   
   dt <- merge(dt, dt_year, 
-              by = "area_fips", 
+              by = unit, 
               all.x = T)
   return(dt)
 }
@@ -75,21 +75,18 @@ run_lp_lagged_denom <- function(
     denominator, 
     controls = "",
     shock = "w_IPW_US",
-    instrument = "w_IPW_OTH"
+    instrument = "w_IPW_OTH", 
+    table = TRUE, 
+    table_horizons = c(0, 2, 4, 7),
+    unit = "area_fips"
 ) {
   reg <- copy(reg)
   
   # Make sure shifts are chronological
-  setorder(reg, area_fips, year)
+  setorderv(reg, c(unit, "year"))
   
   # Keep balanced panel
-  reg <- reg[
-    area_fips %in%
-      reg[, .N, by = area_fips][
-        N == length(unique(reg$year)),
-        area_fips
-      ]
-  ]
+  reg <- reg[get(unit) %in% reg[, .N, by=unit][N == uniqueN(reg$year), get(unit)]]
   
   # Shock lags
   reg[, `:=`(
@@ -97,7 +94,7 @@ run_lp_lagged_denom <- function(
     l2_own_shock = shift(get(shock), 2),
     l1_own_iv = shift(get(instrument), 1),
     l2_own_iv = shift(get(instrument), 2)
-  ), by=area_fips]
+  ), by=unit]
   
   # Log outcome
   # reg[, y_lp := log(get(outcome))]
@@ -105,15 +102,15 @@ run_lp_lagged_denom <- function(
   
   reg[, y_control := get(outcome) / get(denominator) * 100]
   
-  reg[, l1_y := shift(y_control, 1), by = area_fips]
-  reg[, l2_y := shift(y_control, 2), by = area_fips]
-  reg[, l3_y := shift(y_control, 3), by = area_fips]
-  reg[, l4_y := shift(y_control, 4), by = area_fips]
+  reg[, l1_y := shift(y_control, 1), by=unit]
+  reg[, l2_y := shift(y_control, 2), by=unit]
+  reg[, l3_y := shift(y_control, 3), by=unit]
+  reg[, l4_y := shift(y_control, 4), by=unit]
   
   reg[, denom := shift(
     get(denominator),
     1
-  ), by = area_fips]
+  ), by=unit]
   
   # LP outcomes
   for (h in horizons) {
@@ -124,7 +121,7 @@ run_lp_lagged_denom <- function(
     reg[, (var) :=
           shift(y_lp, type = "lead", n = h) -
           shift(y_lp, type = "lag", n = 1),
-        by = area_fips]
+        by=unit]
     reg[, (dvar) := get(var) / denom * 100 ]
   }
   
@@ -156,12 +153,12 @@ run_lp_lagged_denom <- function(
         paste0(
           var,
           " ~ l1_y + l_sh_empl_mfg ", controls,
-          " | year + area_fips | ",
+          " | year + ", unit, " | ",
           shock, " ~ ", instrument
         )
       ),
       data=reg_est,
-      cluster=~area_fips + year,
+      cluster=as.formula(paste0("~", unit, "+year")),
       weight=~baseline_emp
     )
     
@@ -214,6 +211,23 @@ run_lp_lagged_denom <- function(
     )
     print(p)
   }
+  
+  if (table) {
+    
+    export_lp_single_table(
+      results = results,
+      outcome = paste0(outcome, "_share_", denominator),
+      horizons = table_horizons,
+      output_dir = figs,
+      filename = paste0(
+        "differenced_lp_",
+        outcome, "_share_", denominator, "_",
+        shock, "_", date
+      )
+    )
+    
+  }
+  
   return(results)
 }
 
@@ -231,11 +245,14 @@ run_lp_multiple_shocks <- function(
     end_year = 2007,
     horizons = 0:7,
     controls = "",
-    figure = TRUE
+    figure = TRUE,
+    table = TRUE,
+    table_horizons = c(0, 2, 4, 7),
+    unit = "area_fips"
 ) {
   
   reg <- copy(reg)
-  setorder(reg, area_fips, year)
+  setorderv(reg, c(unit, "year"))
   
   # Shock lags
   reg[, `:=`(
@@ -245,25 +262,22 @@ run_lp_multiple_shocks <- function(
     l2_own_shock_2 = shift(get(shock_2), 2),
     l1_own_iv_1 = shift(get(instrument_1), 1),
     l1_own_iv_2 = shift(get(instrument_2), 2)
-  ), by=area_fips]
+  ), by=unit]
   
-  reg <- reg[
-    area_fips %in%
-      reg[, .N, by=area_fips][N == length(unique(reg$year)), area_fips]
-  ]
+  reg <- reg[get(unit) %in% reg[, .N, by=unit][N == uniqueN(reg$year), get(unit)]]
   
   # Outcome and lags
   reg[, y_lp := get(outcome)]
   reg[, y_control := get(outcome) / get(denominator) * 100]
-  reg[, l1_y := shift(y_control, 1), by=area_fips]
-  reg[, l2_y := shift(y_control, 2), by=area_fips]
-  reg[, denom := shift(get(denominator), 1), by=area_fips]
+  reg[, l1_y := shift(y_control, 1), by=unit]
+  reg[, l2_y := shift(y_control, 2), by=unit]
+  reg[, denom := shift(get(denominator), 1), by=unit]
   
   # LP outcomes
   for (h in horizons) {
     reg[, (paste0("diff_", h)) :=
           (shift(y_lp, h, type="lead") - shift(y_lp, 1)) / denom * 100,
-        by=area_fips]
+        by=unit]
   }
   
   reg_est <- reg[year %in% start_year:end_year]
@@ -286,13 +300,13 @@ run_lp_multiple_shocks <- function(
       as.formula(paste0(
         var,
         " ~ l1_y + l_sh_empl_mfg ", controls,
-        " | year + area_fips | ",
+        " | year + ", unit, " | ",
         shock_1, " + ", shock_2,
         " ~ ",
         instrument_1, " + ", instrument_2
       )),
       data=reg_est,
-      cluster=~area_fips + year,
+      cluster=as.formula(paste0("~", unit, "+year")),
       weights=~baseline_emp
     )
     print(summary(mod, stage = 1))
@@ -316,7 +330,7 @@ run_lp_multiple_shocks <- function(
   # Cleaner names for plot
   results[, shock_label := fifelse(
     shock == shock_1,
-    "Own-county exposure",
+    if (unit == "commuting_zone_id_2000") "Own-CZ exposure" else "Own-county exposure",
     "Commuting-network exposure"
   )]
   
@@ -346,6 +360,25 @@ run_lp_multiple_shocks <- function(
     )
   }
   
+  
+  if (table) {
+    
+    export_lp_table(
+      results = results,
+      outcome = paste0(outcome, "_share_", denominator),
+      shock_1 = shock_1,
+      shock_2 = shock_2,
+      horizons = table_horizons,
+      output_dir = figs,
+      prefix = paste0(
+        "differenced_multishock_lp_",
+        outcome, "_share_", denominator, "_",
+        shock_1, "_", date
+      )
+    )
+    
+  }
+  
   return(results[])
 }
 
@@ -359,21 +392,24 @@ run_lp_ratio <- function(
     horizons=0:7, 
     figure=TRUE,
     shock = "w_IPW_US",
-    instrument = "w_IPW_OTH"
+    instrument = "w_IPW_OTH", 
+    table = TRUE, 
+    table_horizons = c(0, 2, 4, 7),
+    unit = "area_fips"
 ) {
   reg <- copy(reg)
   reg <- reg[!is.na(get(outcome)) & year <= end_year + max(horizons)]
-  reg <- reg[area_fips %in% reg[, .N, by=area_fips][N == length(unique(reg$year)), area_fips]]
-  setorder(reg, area_fips, year)
+  reg <- reg[get(unit) %in% reg[, .N, by=unit][N == uniqueN(reg$year), get(unit)]]
+  setorderv(reg, c(unit, "year"))
   
   reg[, y_lp := get(outcome)]
-  reg[, l1_y := shift(y_lp), by=area_fips]
-  reg[, l2_y := shift(y_lp, 2), by=area_fips]
-  reg[, l_sh_empl_mfg := shift(sh_empl_mfg), by=area_fips]
+  reg[, l1_y := shift(y_lp), by=unit]
+  reg[, l2_y := shift(y_lp, 2), by=unit]
+  reg[, l_sh_empl_mfg := shift(sh_empl_mfg), by=unit]
   
   for (h in horizons) {
     var <- paste0("diff_", h)
-    reg[, (var) := shift(y_lp, type="lead", n=h) - l1_y, by = area_fips]
+    reg[, (var) := shift(y_lp, type="lead", n=h) - l1_y, by=unit]
   }
   
   reg_est <- reg[year %in% start_year:end_year]
@@ -388,11 +424,11 @@ run_lp_ratio <- function(
       as.formula(paste0(
         var,
         " ~ l1_y + l_sh_empl_mfg", controls,
-        " | area_fips + year | ",
+        " | ", unit, " + year | ",
         shock, " ~ ", instrument
       )),
       data=reg_est,
-      cluster=~area_fips+year,
+      cluster=as.formula(paste0("~", unit, "+year")),
       weights=~baseline_emp
     )
     
@@ -424,6 +460,22 @@ run_lp_ratio <- function(
     print(p)
   }
   
+  if (table) {
+    
+    export_lp_single_table(
+      results = results,
+      outcome = outcome,
+      horizons = table_horizons,
+      output_dir = figs,
+      filename = paste0(
+        "baseline_lp_",
+        outcome, "_",
+        shock, "_", date
+      )
+    )
+    
+  }
+  
   return(results)
 }
 
@@ -440,18 +492,21 @@ run_lp_ratio_multiple_shocks <- function(
     end_year=2007,
     horizons=0:7,
     controls="",
-    figure=TRUE
+    figure=TRUE,
+    table = TRUE,
+    table_horizons = c(0, 2, 4, 7),
+    unit = "area_fips"
 ) {
   reg <- copy(reg)
   reg <- reg[!is.na(get(outcome)) & year <= end_year + max(horizons)]
-  reg <- reg[area_fips %in% reg[, .N, by=area_fips][N == length(unique(reg$year)), area_fips]]
-  setorder(reg,area_fips,year)
+  reg <- reg[get(unit) %in% reg[, .N, by=unit][N == uniqueN(reg$year), get(unit)]]
+  setorderv(reg, c(unit, "year"))
   
   # Outcome and lags
   reg[, y_lp := get(outcome)]
-  reg[, l1_y := shift(y_lp), by=area_fips]
-  reg[, l2_y := shift(y_lp,2), by=area_fips]
-  reg[, l_sh_empl_mfg := shift(sh_empl_mfg), by=area_fips]
+  reg[, l1_y := shift(y_lp), by=unit]
+  reg[, l2_y := shift(y_lp,2), by=unit]
+  reg[, l_sh_empl_mfg := shift(sh_empl_mfg), by=unit]
   
   reg[, `:=`(
     l1_own_shock_1 = shift(get(shock_1), 1),
@@ -460,11 +515,11 @@ run_lp_ratio_multiple_shocks <- function(
     l2_own_shock_2 = shift(get(shock_2), 2),
     l1_own_iv_1 = shift(get(instrument_1), 1),
     l1_own_iv_2 = shift(get(instrument_2), 2)
-  ), by=area_fips]
+  ), by=unit]
   
   # LP outcomes: Y[t+h] - Y[t-1]
   for(h in horizons) {
-    reg[, (paste0("diff_",h)) := shift(y_lp,h,type="lead") - l1_y, by=area_fips]
+    reg[, (paste0("diff_",h)) := shift(y_lp,h,type="lead") - l1_y, by=unit]
   }
   
   # Restrict after constructing leads/lags
@@ -486,12 +541,12 @@ run_lp_ratio_multiple_shocks <- function(
       as.formula(paste0(
         var,
         " ~ l1_y + l_sh_empl_mfg ", controls,
-        " | year + area_fips | ",
+        " | year + ", unit, " | ",
         shock_1, " + ", shock_2,
         " ~ ", instrument_1, " + ", instrument_2
       )),
       data=reg_est,
-      cluster=~area_fips + year,
+      cluster=as.formula(paste0("~", unit, "+year")),
       weights=~baseline_emp
     )
     
@@ -516,7 +571,7 @@ run_lp_ratio_multiple_shocks <- function(
   # Plot labels
   results[, shock_label := fifelse(
     shock == shock_1,
-    "Own-county exposure",
+    if (unit == "commuting_zone_id_2000") "Own-CZ exposure" else "Own-county exposure",
     "Commuting-network exposure"
   )]
   
@@ -542,6 +597,24 @@ run_lp_ratio_multiple_shocks <- function(
     ggsave(paste0(figs, "/baseline_multishock_lp_", outcome, "_", shock_1, "_", date, ".pdf"), p, height=4, width=4)
   }
   
+  
+  if (table) {
+    
+    export_lp_table(
+      results = results,
+      outcome = outcome,
+      shock_1 = shock_1,
+      shock_2 = shock_2,
+      horizons = table_horizons,
+      output_dir = figs,
+      prefix = paste0(
+        "baseline_multishock_lp_",
+        outcome, "_", shock_1, "_", date
+      )
+    )
+    
+  }
+  
   return(results[])
 }
 
@@ -561,7 +634,8 @@ run_lp_ratio_multiple_shocks_heterogeneity <- function(
     end_year = 2015,
     horizons = 0:7,
     controls = "",
-    figure = TRUE
+    figure = TRUE,
+    unit = "area_fips"
 ) {
   
   reg <- copy(reg)
@@ -572,21 +646,15 @@ run_lp_ratio_multiple_shocks_heterogeneity <- function(
       year <= end_year + max(horizons)
   ]
   
-  reg <- reg[
-    area_fips %in%
-      reg[, .N, by = area_fips][
-        N == length(unique(reg$year)),
-        area_fips
-      ]
-  ]
+  reg <- reg[get(unit) %in% reg[, .N, by=unit][N == uniqueN(reg$year), get(unit)]]
   
-  setorder(reg, area_fips, year)
+  setorderv(reg, c(unit, "year"))
   
   # Outcome and lags
   reg[, y_lp := get(outcome)]
-  reg[, l1_y := shift(y_lp), by = area_fips]
-  reg[, l2_y := shift(y_lp, 2), by = area_fips]
-  reg[, l_sh_empl_mfg := shift(sh_empl_mfg), by = area_fips]
+  reg[, l1_y := shift(y_lp), by=unit]
+  reg[, l2_y := shift(y_lp, 2), by=unit]
+  reg[, l_sh_empl_mfg := shift(sh_empl_mfg), by=unit]
   
   # Shock lags
   reg[, `:=`(
@@ -596,13 +664,13 @@ run_lp_ratio_multiple_shocks_heterogeneity <- function(
     l2_own_shock_2 = shift(get(shock_2), 2),
     l1_own_iv_1 = shift(get(instrument_1), 1),
     l1_own_iv_2 = shift(get(instrument_2), 2)
-  ), by = area_fips]
+  ), by=unit]
   
   # LP outcomes
   for (h in horizons) {
     reg[, (paste0("diff_", h)) :=
           shift(y_lp, h, type = "lead") - l1_y,
-        by = area_fips]
+        by=unit]
   }
   
   # Estimation period
@@ -651,14 +719,14 @@ run_lp_ratio_multiple_shocks_heterogeneity <- function(
           paste0(
             var,
             " ~ l1_y + l_sh_empl_mfg ", controls,
-            " | year + area_fips | ",
+            " | year + ", unit, " | ",
             shock_1, " + ", shock_2,
             " ~ ",
             instrument_1, " + ", instrument_2
           )
         ),
         data = reg_est[get(group_var) == g],
-        cluster = ~area_fips + year,
+        cluster=as.formula(paste0("~", unit, "+year")),
         weights = ~baseline_emp
       )
       
@@ -768,11 +836,12 @@ run_lp_multiple_shocks_heterogeneity <- function(
     end_year = 2007,
     horizons = 0:7,
     controls = "",
-    figure = TRUE
+    figure = TRUE,
+    unit = "area_fips"
 ) {
   
   reg <- copy(reg)
-  setorder(reg, area_fips, year)
+  setorderv(reg, c(unit, "year"))
   
   # Shock lags
   reg[, `:=`(
@@ -784,33 +853,27 @@ run_lp_multiple_shocks_heterogeneity <- function(
     l2_own_iv_1 = shift(get(instrument_1), 2),
     l1_own_iv_2 = shift(get(instrument_2), 1),
     l2_own_iv_2 = shift(get(instrument_2), 2)
-  ), by = area_fips]
+  ), by=unit]
   
   # Balanced panel
-  reg <- reg[
-    area_fips %in%
-      reg[, .N, by = area_fips][
-        N == length(unique(reg$year)),
-        area_fips
-      ]
-  ]
+  reg <- reg[get(unit) %in% reg[, .N, by=unit][N == uniqueN(reg$year), get(unit)]]
   
   # Outcome and lags
   reg[, y_lp := get(outcome)]
   reg[, y_control := get(outcome) / get(denominator) * 100]
-  reg[, l1_y := shift(y_control, 1), by = area_fips]
-  reg[, l2_y := shift(y_control, 2), by = area_fips]
-  reg[, l_sh_empl_mfg := shift(sh_empl_mfg), by = area_fips]
+  reg[, l1_y := shift(y_control, 1), by=unit]
+  reg[, l2_y := shift(y_control, 2), by=unit]
+  reg[, l_sh_empl_mfg := shift(sh_empl_mfg), by=unit]
   
   # Lagged denominator
-  reg[, denom := shift(get(denominator), 1), by = area_fips]
+  reg[, denom := shift(get(denominator), 1), by=unit]
   
   # LP outcomes
   for (h in horizons) {
     reg[, (paste0("diff_", h)) :=
           (shift(y_lp, h, type = "lead") - shift(y_lp, 1)) /
           denom * 100,
-        by = area_fips]
+        by=unit]
   }
   
   # Estimation sample
@@ -862,14 +925,14 @@ run_lp_multiple_shocks_heterogeneity <- function(
           paste0(
             var,
             " ~ l1_y + l_sh_empl_mfg ", controls,
-            " | year + area_fips | ",
+            " | year + ", unit, " | ",
             shock_1, " + ", shock_2,
             " ~ ",
             instrument_1, " + ", instrument_2
           )
         ),
         data = reg_est[get(group_var) == g],
-        cluster = ~area_fips + year,
+        cluster=as.formula(paste0("~", unit, "+year")),
         weights = ~baseline_emp
       )
       
@@ -953,3 +1016,204 @@ run_lp_multiple_shocks_heterogeneity <- function(
   
   return(results[])
 }
+
+
+
+################################################################################
+# Export two-shock LP results to LaTeX
+################################################################################
+
+export_lp_table <- function(
+    results,
+    outcome,
+    shock_1,
+    shock_2,
+    horizons = c(0, 2, 4, 7),
+    output_dir = figs,
+    prefix = "lp",
+    digits = 3
+) {
+  
+  dt <- copy(as.data.table(results))
+  dt <- dt[h %in% horizons]
+  
+  # Identify shocks
+  dt[, shock_label := fifelse(
+    shock == shock_1,
+    "Own-county exposure",
+    "Neighboring-county exposure"
+  )]
+  
+  # Significance stars (normal approximation)
+  dt[, stars := fifelse(
+    abs(coef / se) >= qnorm(.9995), "***",
+    fifelse(
+      abs(coef / se) >= qnorm(.995), "**",
+      fifelse(abs(coef / se) >= qnorm(.95), "*", "")
+    )
+  )]
+  
+  dt[, coefficient := paste0(
+    sprintf(paste0("%.", digits, "f"), coef),
+    stars
+  )]
+  
+  dt[, std_error := paste0(
+    "(",
+    sprintf(paste0("%.", digits, "f"), se),
+    ")"
+  )]
+  
+  # Separate rows for coefficients and standard errors
+  estimates <- dt[, .(
+    shock_label,
+    h,
+    coefficient,
+    std_error
+  )]
+  
+  coef_wide <- dcast(
+    estimates,
+    shock_label ~ h,
+    value.var = "coefficient"
+  )
+  
+  se_wide <- dcast(
+    estimates,
+    shock_label ~ h,
+    value.var = "std_error"
+  )
+  
+  # Preserve requested shock ordering
+  shock_order <- c(
+    "Own-county exposure",
+    "Neighboring-county exposure"
+  )
+  
+  coef_wide[, order := match(shock_label, shock_order)]
+  se_wide[, order := match(shock_label, shock_order)]
+  
+  setorder(coef_wide, order)
+  setorder(se_wide, order)
+  
+  coef_wide[, order := NULL]
+  se_wide[, order := NULL]
+  
+  # Build alternating coefficient / SE rows
+  rows <- vector("list", 2 * nrow(coef_wide))
+  
+  for (i in seq_len(nrow(coef_wide))) {
+    
+    rows[[2 * i - 1]] <- coef_wide[i]
+    rows[[2 * i]] <- se_wide[i]
+    
+    rows[[2 * i]][, shock_label := ""]
+  }
+  
+  tab <- rbindlist(rows)
+  
+  setnames(
+    tab,
+    c("shock_label", as.character(horizons)),
+    c("Exposure", paste0("Year ", horizons)),
+    skip_absent = TRUE
+  )
+  
+  # Export LaTeX
+  
+  filename <- paste0(prefix, ".tex")
+  
+  latex <- xtable(
+    as.data.frame(tab),
+    caption = paste(
+      "Cumulative local projection estimates:",
+      gsub("_", " ", outcome)
+    ),
+    label = paste0(
+      "tab:",
+      gsub("[^A-Za-z0-9]+", "_", prefix),
+      "_",
+      gsub("[^A-Za-z0-9]+", "_", outcome)
+    ),
+    align = c("l", "l", rep("c", ncol(tab) - 1))
+  )
+  
+  print(
+    latex,
+    file = file.path(output_dir, filename),
+    include.rownames = FALSE,
+    sanitize.text.function = identity,
+    floating = TRUE,
+    booktabs = TRUE
+  )
+  
+  invisible(tab[])
+}
+
+
+export_lp_single_table <- function(
+    results,
+    outcome,
+    horizons = c(0, 2, 4, 7),
+    output_dir = figs,
+    filename,
+    digits = 3
+) {
+  
+  dt <- copy(as.data.table(results))
+  dt <- dt[h %in% horizons]
+  setorder(dt, h)
+  
+  stopifnot(all(horizons %in% dt$h))
+  
+  dt[, stars := fifelse(
+    abs(coef / se) >= qnorm(.9995), "***",
+    fifelse(
+      abs(coef / se) >= qnorm(.995), "**",
+      fifelse(abs(coef / se) >= qnorm(.95), "*", "")
+    )
+  )]
+  
+  fmt <- paste0("%.", digits, "f")
+  
+  estimates <- paste0(sprintf(fmt, dt$coef), dt$stars)
+  errors <- paste0("(", sprintf(fmt, dt$se), ")")
+  
+  tab <- as.data.frame(
+    rbind(
+      c("Import exposure", estimates),
+      c("", errors)
+    ),
+    stringsAsFactors = FALSE
+  )
+  
+  names(tab) <- c(
+    "Exposure",
+    paste0("Year ", sort(horizons))
+  )
+  
+  latex <- xtable(
+    tab,
+    caption = paste(
+      "Cumulative local projection estimates:",
+      gsub("_", " ", outcome)
+    ),
+    label = paste0(
+      "tab:",
+      gsub("[^A-Za-z0-9]+", "_", filename)
+    ),
+    align = c("l", "l", rep("c", length(horizons)))
+  )
+  
+  print(
+    latex,
+    file = file.path(output_dir, paste0(filename, ".tex")),
+    include.rownames = FALSE,
+    sanitize.text.function = identity,
+    floating = TRUE,
+    booktabs = TRUE
+  )
+  
+  invisible(tab)
+}
+

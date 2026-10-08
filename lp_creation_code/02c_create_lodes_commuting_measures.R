@@ -7,10 +7,11 @@
 rm(list = ls())
 
 # Paths
-path <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data/lodes"
-path <- "D:/writing_sample/data/lodes/clean_lp_full"
-output_dir <- paste0(path, "/new_clean_lp_full")
-shock <- fread(paste0(path, "/../../output/lp_weighted_qcew.csv")) |> 
+source("C:/Users/Sophie/Desktop/phd_apps/writing_sample/code/writing_sample/utilities.R")
+
+lodes_path <- paste0(path, "/lodes/clean_lp_full")
+output_dir <- paste0(lodes_path, "/new_clean_lp_full")
+shock <- fread(paste0(lodes_path, "/../../output/lp_weighted_qcew.csv")) |> 
   fselect(year, IPW_US, IPW_OTH, area_fips, baseline_emp) 
 
 url <- "https://www2.census.gov/geo/docs/reference/county_adjacency/county_adjacency2010.txt"
@@ -21,6 +22,8 @@ neighbors <- fread(url, sep="\t", fill=TRUE, header=FALSE,
 neighbors[, county := nafill(county, type="locf")]
 neighbors <- neighbors[, .(county, neighbor)]
 neighbors[, neighbor_merge := 1 ]
+
+
 
 # Geographic neighbor shocks --------------------------------------------------
 years <- unique(shock$year)
@@ -37,7 +40,7 @@ neighbors_ipw <- merge(
   by.x=c("neighbor","year"),
   by.y=c("area_fips","year"),
   all.x=TRUE
-)
+)Z
 
 setnames(neighbors_ipw,c("IPW_US","IPW_OTH"),c("neighbor_IPW_US","neighbor_IPW_OTH"))
 
@@ -49,10 +52,10 @@ neighbor_shock <- neighbors_ipw[, .(
   empw_neighbor_IPW_OTH=weighted.mean(neighbor_IPW_OTH,baseline_emp,na.rm=TRUE)
 ), by=.(area_fips=county,year)]
 
-fwrite(neighbor_shock, paste0(path, "/../../output/neighbor_shock_alltime.csv"))
+fwrite(neighbor_shock, paste0(lodes_path, "/../../output/neighbor_shock_alltime.csv"))
 
 # Annual LODES commuting measures ---------------------------------------------
-outside <- fread(paste0(path,"/../raw/full_lodes_data_1990-2025.csv"))
+outside <- fread(paste0(lodes_path,"/../raw/full_lodes_data_1990-2025.csv"))
 
 # Home-county shock
 outside <- merge(

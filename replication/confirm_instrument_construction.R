@@ -96,7 +96,7 @@ ggplot(data = toplot, aes(x = year, y = sector_emp))+
   geom_line()+ 
   theme_bw()
 
-
+exit 
 # trade data -> naics for naics level shock ------------------------------------ 
 shock <- data.table(read_stata(paste0(path, "/112670-V1/Public-Release-Data/dta/sic87dd_trade_data.dta")))
 fig1 <- data.table(read_stata(paste0(path, "/112670-V1/Public-Release-Data/dta/figure1_data.dta")))
