@@ -1,6 +1,6 @@
 ################################################################################
 # Final county LP specifications, v2. Original testing script remains unchanged.
-# Five outcomes, each with single-shock and two-shock specifications (10 calls).
+# Five paired outcomes plus the two-shock outward migration share (11 calls).
 ################################################################################
 rm(list = ls())
 source("C:/Users/Sophie/Desktop/phd_apps/writing_sample/code/writing_sample/utilities.R")
@@ -228,6 +228,31 @@ migration_total_single <- run_lp_lagged_denom(
   unit = "area_fips"
 )
 
+# Cumulative outward migration as a share of cumulative total migration.
+reg[, cum_domestic_outflow_share_migration :=
+      cum_domestic_outflow / cum_total_domestic_migration]
+winsor(reg, "cum_domestic_outflow_share_migration", p = .01)
+
+migration_outward_share <- run_lp_ratio_multiple_shocks(
+  reg,
+  outcome = "w_cum_domestic_outflow_share_migration",
+  shock_1 = "w_IPW_US",
+  shock_2 = "w_empw_neighbor_IPW_US",
+  instrument_1 = "w_IPW_OTH",
+  instrument_2 = "w_empw_neighbor_IPW_OTH",
+  controls = "",
+  start_year = 1995,
+  end_year = 2015,
+  horizons = 0:7,
+  table_horizons = 0:7,
+  figure = TRUE,
+  table = TRUE,
+  table_output_dir = tables_dir,
+  unit = "area_fips",
+  height = 4,
+  width = 7
+)
+
 final_results <- list(
   commuting_full_resident_emp = commuting_full_resident_emp,
   commuting_full_resident_emp_single = commuting_full_resident_emp_single,
@@ -238,7 +263,8 @@ final_results <- list(
   manufacturing_two_shock = manufacturing_two_shock,
   manufacturing_single = manufacturing_single,
   migration_total = migration_total,
-  migration_total_single = migration_total_single
+  migration_total_single = migration_total_single,
+  migration_outward_share = migration_outward_share
 )
 saveRDS(final_results, file.path(run_dir, paste0("final_results_", date, ".rds")))
 message("Figures: ", figs, "\nTables: ", tables_dir)

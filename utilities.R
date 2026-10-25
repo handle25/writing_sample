@@ -92,26 +92,66 @@ lp_secondary_shock_label <- function(shock) {
   }
 }
 
+save_lp_single_figure <- function(plot, filename, output_dir = figs,
+                                 height = 4, width = 4) {
+  single_dir <- file.path(output_dir, "single")
+  dir.create(single_dir, recursive = TRUE, showWarnings = FALSE)
+  ggsave(file.path(single_dir, filename), plot,
+         height = height, width = width, bg = "white")
+}
+
 save_lp_shock_figures <- function(full_plot, results, shock_1, filename,
-                                  output_dir = figs, height = 4, width = 4) {
-  full_plot <- full_plot + guides(
-    color = guide_legend(nrow = 2), fill = guide_legend(nrow = 2)
-  )
+                                  output_dir = figs, height = 4, width = 7) {
   own_results <- results[results$shock == shock_1, ]
   if (!nrow(own_results)) stop("Own-shock plotting data is empty.")
 
-  # Replace plotting data, rather than hiding the second series: ggplot then
-  # trains the axes on the own-shock estimates and confidence bands alone.
-  own_plot <- full_plot %+% own_results +
-    scale_color_manual(values = "black") +
-    scale_fill_manual(values = "grey40") +
-    theme(legend.position = "none")
+  # Keep each shock's color identical in the main and appendix figures.
+  shock_labels <- unique(as.character(results$shock_label))
+  own_labels <- unique(as.character(own_results$shock_label))
+  palette <- setNames(rep("#00BFC4", length(shock_labels)), shock_labels)
+  palette[own_labels] <- "#F8766D"  # Orange/coral own-county response.
+  full_plot <- full_plot +
+    scale_color_manual(values = palette) +
+    scale_fill_manual(values = palette) +
+    guides(color = guide_legend(nrow = 2), fill = guide_legend(nrow = 2))
 
-  appendix_dir <- file.path(output_dir, "appendix")
+  # Train the main figure's axes on own-shock estimates and bands only.
+  own_plot <- full_plot %+% own_results + theme(legend.position = "none")
+
+  multi_dir <- file.path(output_dir, "multi")
+  appendix_dir <- file.path(output_dir, "appendix", "multi")
+  dir.create(multi_dir, recursive = TRUE, showWarnings = FALSE)
   dir.create(appendix_dir, recursive = TRUE, showWarnings = FALSE)
-  ggsave(file.path(output_dir, filename), own_plot, height = height, width = width, bg = "white")
-  ggsave(file.path(appendix_dir, filename), full_plot, height = height, width = width, bg = "white")
+  ggsave(file.path(multi_dir, filename), own_plot,
+         height = height, width = width, bg = "white")
+  ggsave(file.path(appendix_dir, filename), full_plot,
+         height = height, width = width, bg = "white")
   print(own_plot)
+  invisible(list(own = own_plot, full = full_plot))
+}
+
+save_lp_heterogeneity_figures <- function(full_plot, results, shock_1, filename,
+                                          output_dir = figs, height = 4, width = 8) {
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+  # Additional display scaling only; returned estimates and table data stay unchanged.
+  results <- copy(results)
+  display_columns <- c("coef", "lower90", "upper90", "lower95", "upper95")
+  results[, (display_columns) := lapply(.SD, function(x) x * 100),
+          .SDcols = display_columns]
+  full_plot <- full_plot %+% results + labs(y = "Coefficient x 100")
+  own <- results[shock == shock_1]
+  palette <- setNames(rep("#00BFC4", length(unique(results$shock_label))),
+                      unique(results$shock_label))
+  palette[unique(own$shock_label)] <- "#F8766D"
+  full_plot <- full_plot + scale_color_manual(values = palette) +
+    scale_fill_manual(values = palette) + facet_wrap(~group, nrow = 1, scales = "free_y")
+  own_plot <- full_plot %+% own + theme(legend.position = "none")
+  stem <- sub("\\.pdf$", "", filename)
+  ggsave(file.path(output_dir, paste0(stem, "_both_shocks.pdf")), full_plot,
+         height = height, width = width, bg = "white")
+  ggsave(file.path(output_dir, paste0(stem, "_own_shock.pdf")), own_plot,
+         height = height, width = width, bg = "white")
+  print(full_plot)
   invisible(list(own = own_plot, full = full_plot))
 }
 
@@ -243,30 +283,23 @@ run_lp_lagged_denom <- function(
   if (figure) {
     
     p <- ggplot(results, aes(x = h, y = coef)) +
-      geom_ribbon(
-        aes(ymin = lower95, ymax = upper95),
-        alpha = 0.2
-      ) +
-      geom_ribbon(
-        aes(ymin = lower90, ymax = upper90),
-        alpha = 0.5
-      ) +
-      geom_line() +
-      geom_point() +
-      geom_hline(
-        yintercept = 0,
-        linetype = "dashed"
-      ) +
-      scale_x_continuous(
-        breaks = horizons
-      ) +
-      theme_bw()
+      geom_hline(yintercept = 0, linetype = "dashed") +
+      geom_ribbon(aes(ymin = lower95, ymax = upper95),
+                  fill = "#F8766D", alpha = .10, color = NA) +
+      geom_ribbon(aes(ymin = lower90, ymax = upper90),
+                  fill = "#F8766D", alpha = .18, color = NA) +
+      geom_line(color = "#F8766D", linewidth = .8) +
+      geom_point(color = "#F8766D", size = 2) +
+      scale_x_continuous(breaks = horizons) +
+      labs(x = "Horizon", y = "Coefficient") +
+      theme_minimal() +
+      theme(legend.position = "none")
     
-    ggsave(
-      paste0(figs, "/differenced_lp_", outcome, "_share_", denominator, "_", shock, "_", date, ".pdf"),
+    save_lp_single_figure(
       p,
-      height=4,
-      width=4
+      filename = paste0("differenced_lp_", outcome, "_share_", denominator,
+                        "_", shock, "_", date, ".pdf"),
+      output_dir = figs, height = 4, width = 7
     )
     print(p)
   }
@@ -515,15 +548,23 @@ run_lp_ratio <- function(
   )]
   
   if (figure) {
-    p <- ggplot(results, aes(h, coef)) +
-      geom_ribbon(aes(ymin=lower95, ymax=upper95), alpha=.2) +
-      geom_ribbon(aes(ymin=lower90, ymax=upper90), alpha=.5) +
-      geom_line() + geom_point() +
-      geom_hline(yintercept=0, linetype="dashed") +
-      scale_x_continuous(breaks=horizons) +
-      theme_bw()
+    p <- ggplot(results, aes(x = h, y = coef)) +
+      geom_hline(yintercept = 0, linetype = "dashed") +
+      geom_ribbon(aes(ymin = lower95, ymax = upper95),
+                  fill = "#F8766D", alpha = .10, color = NA) +
+      geom_ribbon(aes(ymin = lower90, ymax = upper90),
+                  fill = "#F8766D", alpha = .18, color = NA) +
+      geom_line(color = "#F8766D", linewidth = .8) +
+      geom_point(color = "#F8766D", size = 2) +
+      scale_x_continuous(breaks = horizons) +
+      labs(x = "Horizon", y = "Coefficient") +
+      theme_minimal() +
+      theme(legend.position = "none")
     
-    ggsave(paste0(figs, "/baseline_lp_", outcome, "_", shock, "_", date, ".pdf"), p, height=4, width=4)
+    save_lp_single_figure(
+      p, filename = paste0("baseline_lp_", outcome, "_", shock, "_", date, ".pdf"),
+      output_dir = figs, height = 4, width = 7
+    )
     print(p)
   }
   
@@ -886,9 +927,9 @@ run_lp_ratio_multiple_shocks_heterogeneity <- function(
         legend.position = "bottom"
       )
     
-    save_lp_shock_figures(
+    save_lp_heterogeneity_figures(
       p, results, shock_1,
-      filename = paste0("coastal_ratio_", outcome, "_", date, ".pdf"),
+      filename = paste0(sub("_group$", "", group_var), "_ratio_", outcome, "_", date, ".pdf"),
       output_dir = figs, height = 4, width = 8
     )
   }
@@ -1084,9 +1125,9 @@ run_lp_multiple_shocks_heterogeneity <- function(
         legend.position = "bottom"
       )
     
-    save_lp_shock_figures(
+    save_lp_heterogeneity_figures(
       p, results, shock_1,
-      filename = paste0("coastal_count_", outcome, "_", date, ".pdf"),
+      filename = paste0(sub("_group$", "", group_var), "_count_", outcome, "_", date, ".pdf"),
       output_dir = figs, height = 4, width = 8
     )
   }
