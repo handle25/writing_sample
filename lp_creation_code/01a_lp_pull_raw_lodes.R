@@ -53,8 +53,15 @@ for (s in states) {
         state_part = "main",
         download_dir = path
       )
+      lodes_aux <- grab_lodes(
+        state = s,
+        year = y,
+        lodes_type = "od",
+        state_part = "aux",
+        download_dir = path
+      )
       
-      lodes <- as.data.table(lodes)
+      lodes <- as.data.table(rbind(lodes, lodes_aux))
       
       lodes[, year := y]
       

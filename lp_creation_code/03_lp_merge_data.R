@@ -7,11 +7,12 @@ rm(list = ls())
 
 # Paths ------------------------------------------------------------------------
 source("C:/Users/Sophie/Desktop/phd_apps/writing_sample/code/writing_sample/utilities.R")
+run_date <- format(Sys.Date(), "%Y-%m-%d")
 
 # Read in data -----------------------------------------------------------------
 # Population
 acs <- fread(paste0(path, "/acs/population_1995_2023.csv"))
-# acs_1y <- fread(paste0(path, "/acs/acs_1y_2005_2024_commuting.csv"))
+acs_1y <- fread(paste0(path, "/acs/acs_1y_2005_2024_commuting.csv"))
 
 # QCEW
 qcew <- fread(paste0(path, "/output/lp_weighted_qcew.csv"))
@@ -36,10 +37,33 @@ laus <- laus |>
 
 
 # LODES commuting --------------------------------------------------------------
-lodes <- fread(paste0(path,"/output/lp_new_lodes_collapsed_all_no_crosswalk.csv"))
+lodes1 <- fread(file.path(
+  path,
+  "lodes/raw/lp_collapsed_full_lodes_data_with_aux_1990-2025.csv"
+))
+setnames(lodes1, "total_jobs", "aux_resident_emp")
+setnames(lodes1, "outside_jobs", "aux_outside_jobs")
+setnames(lodes1, "outside_d_jobs", "aux_outside_d_jobs")
+
+lodes <- fread(paste0(path, "/output/lp_new_lodes_collapsed_all_no_crosswalk.csv"))
+lodes <- merge(lodes1, lodes, by = c("county", "year"), all = T)
 lodes_measure <- fread(paste0(path, "/lodes/clean_lp_full/new_clean_lp_full/new_commuting_measures_lp_full_1990-2025.csv"))
 setnames(lodes, "county", "area_fips")
 setnames(lodes_measure, "county", "area_fips")
+# Full main + auxiliary commuting measures from 02d (kept alongside 02c).
+lodes_measure_aux <- fread(paste0(
+  path, "/lodes/clean_lp_full/new_clean_lp_full/",
+  "new_commuting_measures_lp_full_with_aux_1990-2025.csv"
+))
+setnames(lodes_measure_aux, "county", "area_fips")
+stopifnot(!anyDuplicated(lodes_measure_aux[, .(area_fips, year)]))
+# Workplace-based incoming commuting measures from 02e.
+workplace_commuting <- fread(file.path(
+  path, "output/new_workplace_commuting_measures_full_1990-2025.csv"
+))
+# For this dataset, the regression county is the WORKPLACE county.
+setnames(workplace_commuting, "w_county", "area_fips")
+stopifnot(!anyDuplicated(workplace_commuting[, .(area_fips, year)]))
 # Labor force denominator -------------------------------------------------------
 lodes <- merge(
   lodes,
@@ -130,12 +154,12 @@ reg <- merge(
   all.x = TRUE
 )
 
-# reg <- merge(
-#   reg,
-#   acs_1y,
-#   by = c("area_fips", "year"),
-#   all.x = TRUE
-# )
+reg <- merge(
+  reg,
+  acs_1y,
+  by = c("area_fips", "year"),
+  all.x = TRUE
+)
 
 reg <- merge(
   reg, 
@@ -144,6 +168,18 @@ reg <- merge(
   all.x = T
 )
 
+# Keep the original measures and add full-coverage aux_ measures.
+reg <- merge(
+  reg, lodes_measure_aux,
+  by = c("area_fips", "year"),
+  all.x = TRUE
+)
+# Match workplace FIPS to the regression county; preserve existing rows/measures.
+reg <- merge(
+  reg, workplace_commuting,
+  by = c("area_fips", "year"),
+  all.x = TRUE
+)
 setorder(reg, area_fips, year)
 
 # Rename fundamental employment concepts
@@ -163,5 +199,5 @@ reg[, statefip :=
 # Save
 fwrite(
   reg,
-  paste0(path, "/output/lp_merged.csv"))
+  paste0(path, "/output/lp_merged_", run_date, ".csv"))
 

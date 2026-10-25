@@ -4,7 +4,7 @@ source("C:/Users/Sophie/Desktop/phd_apps/writing_sample/code/writing_sample/util
 date <- Sys.Date()
 
 # Read CZ panel ----------------------------------------------------------------
-reg <- fread(paste0(path, "/output/lp_transformed_reg_CZ.csv"))[year < 2017]
+reg <- fread(paste0(path, "/output/lp_transformed_reg_CZ.csv"))[year < 2020]
 reg[, test := log(resident_emp)]
 reg[, total_jobs := total_goods_jobs + total_servc_jobs + total_trade_jobs]
 unit <- "commuting_zone_id_2000"

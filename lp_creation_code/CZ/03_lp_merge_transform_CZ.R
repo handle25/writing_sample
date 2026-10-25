@@ -209,6 +209,11 @@ irs <- irs |>
 commuting <- fread(paste0(path, "/output/new_commuting_measures_CZ_1990-2025.csv"))
 
 stopifnot(!anyDuplicated(commuting[, .(commuting_zone_id_2000, year)]))
+# Full main + auxiliary commuting measures from CZ 02d.
+commuting_aux <- fread(paste0(
+  path, "/output/new_commuting_measures_CZ_with_aux_1990-2025.csv"
+))
+stopifnot(!anyDuplicated(commuting_aux[, .(commuting_zone_id_2000, year)]))
 
 # Merge datasets ---------------------------------------------------------------
 
@@ -245,6 +250,10 @@ reg <- merge(
 )
 
 reg <- merge(reg, commuting,
+             by=c("commuting_zone_id_2000", "year"), all.x=TRUE)
+
+# Keep original measures and merge full-coverage aux_ measures alongside them.
+reg <- merge(reg, commuting_aux,
              by=c("commuting_zone_id_2000", "year"), all.x=TRUE)
 
 setorder(
@@ -380,6 +389,28 @@ winsor(reg, "manuf_share_emp")
 winsor(reg, "manuf_emp_share_pop")
 
 
+
+# Full main + auxiliary commuting transformations -------------------------------
+# aux_ denotes full coverage, matching CZ 02d and the county pipeline.
+reg <- make_base_year(reg, "aux_com_resident_emp", 2000)
+make_share(reg, "aux_com_resident_emp", "population")
+make_share(reg, "workplace_emp", "aux_com_resident_emp")
+
+aux_commuting_levels <- grep("^aux_com_.*_jobs$", names(reg), value = TRUE)
+for (v in aux_commuting_levels) {
+  make_share(reg, v, "aux_com_resident_emp")
+  make_share(reg, v, "workplace_emp")
+  make_share(reg, v, "population")
+  make_share(reg, v, "labor_force")
+}
+
+# Winsorize the existing full-flow commuting shares from 02d at 1% per tail.
+aux_commuting_shares <- grep("^aux_com_.*_share_", names(reg), value = TRUE)
+for (v in aux_commuting_shares) winsor(reg, v)
+
+# Full-flow destination-weighted shocks, using the same 1% default.
+aux_network_shocks <- grep("^aux_(ex|fn)_.*IPW_(US|OTH)$", names(reg), value = TRUE)
+for (v in aux_network_shocks) winsor(reg, v)
 
 ################################################################################
 # Save

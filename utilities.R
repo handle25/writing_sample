@@ -59,6 +59,62 @@ make_base_year <- function(dt, var, base_year = 2000, unit = "area_fips") {
   return(dt)
 }
 
+# Keep weights consistent in IV goodness-of-fit calculations. Some fixest versions
+# recompute IV SSR without weights inside r2(), despite weighted denominators.
+# Use second-stage (fitted endogenous regressor) residuals, as in fixest::r2.
+lp_fit_stats <- function(mod) {
+  residuals <- if (!is.null(mod$iv_stage) && mod$iv_stage == 2) {
+    mod$iv_residuals
+  } else {
+    mod$residuals
+  }
+  weights <- if (is.null(mod$weights)) rep(1, length(residuals)) else mod$weights
+  ssr <- sum(weights * residuals^2)
+  within_r2 <- if (!is.null(mod$ssr_fe_only) && mod$ssr_fe_only > 0) {
+    1 - ssr / mod$ssr_fe_only
+  } else NA_real_
+  adjusted_r2 <- if (mod$ssr_null > 0 && mod$nobs > mod$nparams) {
+    1 - (ssr / mod$ssr_null) * (mod$nobs - 1) / (mod$nobs - mod$nparams)
+  } else NA_real_
+  c(r2 = within_r2, adj_r2 = adjusted_r2)
+}
+
+
+# Save two views of the SAME two-shock estimates. Filtering is for plotting only.
+lp_secondary_shock_label <- function(shock) {
+  if (grepl("empw_neighbor", shock, fixed = TRUE)) {
+    "Employment-weighted geographic-neighbor exposure"
+  } else if (grepl("mean_neighbor", shock, fixed = TRUE) &&
+             !grepl("ex_|fn_", shock)) {
+    "Mean geographic-neighbor exposure"
+  } else {
+    "Commuting-network exposure"
+  }
+}
+
+save_lp_shock_figures <- function(full_plot, results, shock_1, filename,
+                                  output_dir = figs, height = 4, width = 4) {
+  full_plot <- full_plot + guides(
+    color = guide_legend(nrow = 2), fill = guide_legend(nrow = 2)
+  )
+  own_results <- results[results$shock == shock_1, ]
+  if (!nrow(own_results)) stop("Own-shock plotting data is empty.")
+
+  # Replace plotting data, rather than hiding the second series: ggplot then
+  # trains the axes on the own-shock estimates and confidence bands alone.
+  own_plot <- full_plot %+% own_results +
+    scale_color_manual(values = "black") +
+    scale_fill_manual(values = "grey40") +
+    theme(legend.position = "none")
+
+  appendix_dir <- file.path(output_dir, "appendix")
+  dir.create(appendix_dir, recursive = TRUE, showWarnings = FALSE)
+  ggsave(file.path(output_dir, filename), own_plot, height = height, width = width, bg = "white")
+  ggsave(file.path(appendix_dir, filename), full_plot, height = height, width = width, bg = "white")
+  print(own_plot)
+  invisible(list(own = own_plot, full = full_plot))
+}
+
 # regression functions
 # run_lp runs regressions that are base diffs 
 # output: single shock vars 
@@ -77,8 +133,9 @@ run_lp_lagged_denom <- function(
     shock = "w_IPW_US",
     instrument = "w_IPW_OTH", 
     table = TRUE, 
-    table_horizons = c(0, 2, 4, 7),
-    unit = "area_fips"
+    table_horizons = horizons,
+    unit = "area_fips",
+    table_output_dir = figs
 ) {
   reg <- copy(reg)
   
@@ -140,7 +197,7 @@ run_lp_lagged_denom <- function(
   results <- data.table(
     h = horizons,
     coef = NA_real_,
-    se = NA_real_
+    se = NA_real_, r2 = NA_real_, adj_r2 = NA_real_
   )
   
   # Run LPs
@@ -168,7 +225,9 @@ run_lp_lagged_denom <- function(
     
     results[h == hh, `:=`(
       coef=coef(mod)[fit_shock],
-      se=se(mod)[fit_shock]
+      se=se(mod)[fit_shock],
+      r2=lp_fit_stats(mod)[["r2"]],
+        adj_r2=lp_fit_stats(mod)[["adj_r2"]]
     )]
   }
   
@@ -218,7 +277,7 @@ run_lp_lagged_denom <- function(
       results = results,
       outcome = paste0(outcome, "_share_", denominator),
       horizons = table_horizons,
-      output_dir = figs,
+      output_dir = table_output_dir,
       filename = paste0(
         "differenced_lp_",
         outcome, "_share_", denominator, "_",
@@ -238,17 +297,20 @@ run_lp_multiple_shocks <- function(
     outcome,
     denominator,
     shock_1 = "w_IPW_US",
-    shock_2 = "w_ex_mean_dest_IPW_US",
+    shock_2 = "w_empw_neighbor_IPW_US",
     instrument_1 = "w_IPW_OTH",
-    instrument_2 = "w_ex_mean_dest_IPW_OTH",
+    instrument_2 = "w_empw_neighbor_IPW_OTH",
     start_year = 2000,
     end_year = 2007,
     horizons = 0:7,
     controls = "",
     figure = TRUE,
     table = TRUE,
-    table_horizons = c(0, 2, 4, 7),
-    unit = "area_fips"
+    table_horizons = horizons,
+    unit = "area_fips", 
+    height = 4, 
+    width = 4,
+    table_output_dir = figs
 ) {
   
   reg <- copy(reg)
@@ -290,7 +352,7 @@ run_lp_multiple_shocks <- function(
     shock = c(shock_1, shock_2)
   )
   
-  results[, `:=`(coef=NA_real_, se=NA_real_)]
+  results[, `:=`(coef=NA_real_, se=NA_real_, r2=NA_real_, adj_r2=NA_real_)]
   
   for (hh in horizons) {
     
@@ -315,7 +377,9 @@ run_lp_multiple_shocks <- function(
       fit_s <- paste0("fit_", s)
       results[h == hh & shock == s, `:=`(
         coef=coef(mod)[fit_s],
-        se=se(mod)[fit_s]
+        se=se(mod)[fit_s],
+        r2=lp_fit_stats(mod)[["r2"]],
+        adj_r2=lp_fit_stats(mod)[["adj_r2"]]
       )]
     }
   }
@@ -331,7 +395,7 @@ run_lp_multiple_shocks <- function(
   results[, shock_label := fifelse(
     shock == shock_1,
     if (unit == "commuting_zone_id_2000") "Own-CZ exposure" else "Own-county exposure",
-    "Commuting-network exposure"
+    lp_secondary_shock_label(shock_2)
   )]
   
   if (figure) {
@@ -351,12 +415,11 @@ run_lp_multiple_shocks <- function(
       theme_minimal() +
       theme(legend.position="bottom")
     
-    print(p)
-    ggsave(
-      paste0(figs, "/differenced_multishock_lp_", outcome, "_share_", denominator, "_", shock_1, "_", date, ".pdf"),
-      p,
-      height=4,
-      width=4
+    save_lp_shock_figures(
+      p, results, shock_1,
+      filename = paste0("differenced_multishock_lp_", outcome, "_share_", denominator,
+                        "_", shock_1, "_", date, ".pdf"),
+      output_dir = figs, height = height, width = width
     )
   }
   
@@ -369,7 +432,7 @@ run_lp_multiple_shocks <- function(
       shock_1 = shock_1,
       shock_2 = shock_2,
       horizons = table_horizons,
-      output_dir = figs,
+      output_dir = table_output_dir,
       prefix = paste0(
         "differenced_multishock_lp_",
         outcome, "_share_", denominator, "_",
@@ -394,8 +457,10 @@ run_lp_ratio <- function(
     shock = "w_IPW_US",
     instrument = "w_IPW_OTH", 
     table = TRUE, 
-    table_horizons = c(0, 2, 4, 7),
-    unit = "area_fips"
+    table_horizons = horizons,
+    unit = "area_fips",
+    table_output_dir = figs,
+    outcome_scale = 1
 ) {
   reg <- copy(reg)
   reg <- reg[!is.na(get(outcome)) & year <= end_year + max(horizons)]
@@ -409,13 +474,13 @@ run_lp_ratio <- function(
   
   for (h in horizons) {
     var <- paste0("diff_", h)
-    reg[, (var) := shift(y_lp, type="lead", n=h) - l1_y, by=unit]
+    reg[, (var) := (shift(y_lp, type="lead", n=h) - l1_y) * outcome_scale, by=unit]
   }
   
   reg_est <- reg[year %in% start_year:end_year]
   
   for (h in horizons) winsor(reg_est, paste0("diff_", h))
-  results <- data.table(h=horizons, coef=NA_real_, se=NA_real_)
+  results <- data.table(h=horizons, coef=NA_real_, se=NA_real_, r2=NA_real_, adj_r2=NA_real_)
   
   for (hh in horizons) {
     var <- paste0("w_diff_", hh)
@@ -436,7 +501,9 @@ run_lp_ratio <- function(
     
     results[h == hh, `:=`(
       coef=coef(mod)[fit_shock],
-      se=se(mod)[fit_shock]
+      se=se(mod)[fit_shock],
+      r2=lp_fit_stats(mod)[["r2"]],
+        adj_r2=lp_fit_stats(mod)[["adj_r2"]]
     )]
   }
   
@@ -466,7 +533,7 @@ run_lp_ratio <- function(
       results = results,
       outcome = outcome,
       horizons = table_horizons,
-      output_dir = figs,
+      output_dir = table_output_dir,
       filename = paste0(
         "baseline_lp_",
         outcome, "_",
@@ -485,17 +552,20 @@ run_lp_ratio_multiple_shocks <- function(
     reg,
     outcome,
     shock_1="w_IPW_US",
-    shock_2="w_ex_mean_dest_IPW_US",
+    shock_2="w_empw_neighbor_IPW_US",
     instrument_1="w_IPW_OTH",
-    instrument_2="w_ex_mean_dest_IPW_OTH",
+    instrument_2="w_empw_neighbor_IPW_OTH",
     start_year=2000,
     end_year=2007,
     horizons=0:7,
     controls="",
     figure=TRUE,
     table = TRUE,
-    table_horizons = c(0, 2, 4, 7),
-    unit = "area_fips"
+    table_horizons = horizons,
+    unit = "area_fips", 
+    height = 4, 
+    width = 6,
+    table_output_dir = figs
 ) {
   reg <- copy(reg)
   reg <- reg[!is.na(get(outcome)) & year <= end_year + max(horizons)]
@@ -519,7 +589,7 @@ run_lp_ratio_multiple_shocks <- function(
   
   # LP outcomes: Y[t+h] - Y[t-1]
   for(h in horizons) {
-    reg[, (paste0("diff_",h)) := shift(y_lp,h,type="lead") - l1_y, by=unit]
+    reg[, (paste0("diff_",h)) := (shift(y_lp,h,type="lead") - l1_y)*100, by=unit]
   }
   
   # Restrict after constructing leads/lags
@@ -530,7 +600,7 @@ run_lp_ratio_multiple_shocks <- function(
   
   # Long-form results
   results <- CJ(h=horizons,shock=c(shock_1,shock_2))
-  results[, `:=`(coef=NA_real_,se=NA_real_)]
+  results[, `:=`(coef=NA_real_,se=NA_real_, r2=NA_real_, adj_r2=NA_real_)]
   
   # Run LPs
   for(hh in horizons) {
@@ -555,7 +625,9 @@ run_lp_ratio_multiple_shocks <- function(
       
       results[h == hh & shock == s, `:=`(
         coef=coef(mod)[fit_s],
-        se=se(mod)[fit_s]
+        se=se(mod)[fit_s],
+        r2=lp_fit_stats(mod)[["r2"]],
+        adj_r2=lp_fit_stats(mod)[["adj_r2"]]
       )]
     }
   }
@@ -572,7 +644,7 @@ run_lp_ratio_multiple_shocks <- function(
   results[, shock_label := fifelse(
     shock == shock_1,
     if (unit == "commuting_zone_id_2000") "Own-CZ exposure" else "Own-county exposure",
-    "Commuting-network exposure"
+    lp_secondary_shock_label(shock_2)
   )]
   
   # Plot
@@ -593,8 +665,11 @@ run_lp_ratio_multiple_shocks <- function(
       theme_minimal() +
       theme(legend.position="bottom")
     
-    print(p)
-    ggsave(paste0(figs, "/baseline_multishock_lp_", outcome, "_", shock_1, "_", date, ".pdf"), p, height=4, width=4)
+    save_lp_shock_figures(
+      p, results, shock_1,
+      filename = paste0("baseline_multishock_lp_", outcome, "_", shock_1, "_", date, ".pdf"),
+      output_dir = figs, height = height, width = width
+    )
   }
   
   
@@ -606,7 +681,7 @@ run_lp_ratio_multiple_shocks <- function(
       shock_1 = shock_1,
       shock_2 = shock_2,
       horizons = table_horizons,
-      output_dir = figs,
+      output_dir = table_output_dir,
       prefix = paste0(
         "baseline_multishock_lp_",
         outcome, "_", shock_1, "_", date
@@ -627,9 +702,9 @@ run_lp_ratio_multiple_shocks_heterogeneity <- function(
     outcome,
     group_var,
     shock_1 = "w_IPW_US",
-    shock_2 = "w_ex_mean_dest_IPW_US",
+    shock_2 = "w_empw_neighbor_IPW_US",
     instrument_1 = "w_IPW_OTH",
-    instrument_2 = "w_ex_mean_dest_IPW_OTH",
+    instrument_2 = "w_empw_neighbor_IPW_OTH",
     start_year = 2000,
     end_year = 2015,
     horizons = 0:7,
@@ -703,7 +778,7 @@ run_lp_ratio_multiple_shocks_heterogeneity <- function(
   
   results[, `:=`(
     coef = NA_real_,
-    se = NA_real_,
+    se = NA_real_, r2 = NA_real_, adj_r2 = NA_real_,
     N = NA_integer_
   )]
   
@@ -739,7 +814,9 @@ run_lp_ratio_multiple_shocks_heterogeneity <- function(
           `:=`(
             coef = coef(mod)[fit_s],
             se = se(mod)[fit_s],
-            N = nobs(mod)
+            N = nobs(mod),
+            r2 = lp_fit_stats(mod)[["r2"]],
+            adj_r2 = lp_fit_stats(mod)[["adj_r2"]]
           )
         ]
       }
@@ -759,7 +836,7 @@ run_lp_ratio_multiple_shocks_heterogeneity <- function(
             fifelse(
               shock == shock_1,
               "Own-county exposure",
-              "Commuting-network exposure"
+              lp_secondary_shock_label(shock_2)
             )]
   
   # Plot
@@ -767,12 +844,7 @@ run_lp_ratio_multiple_shocks_heterogeneity <- function(
     
     p <- ggplot(
       results,
-      aes(
-        x = h,
-        y = coef,
-        color = shock_label,
-        fill = shock_label
-      )
+      aes(x = h, y = coef, color = shock_label, fill = shock_label)
     ) +
       geom_hline(
         yintercept = 0,
@@ -814,7 +886,11 @@ run_lp_ratio_multiple_shocks_heterogeneity <- function(
         legend.position = "bottom"
       )
     
-    print(p)
+    save_lp_shock_figures(
+      p, results, shock_1,
+      filename = paste0("coastal_ratio_", outcome, "_", date, ".pdf"),
+      output_dir = figs, height = 4, width = 8
+    )
   }
   
   return(results[])
@@ -829,9 +905,9 @@ run_lp_multiple_shocks_heterogeneity <- function(
     denominator,
     group_var,
     shock_1 = "w_IPW_US",
-    shock_2 = "w_ex_mean_dest_IPW_US",
+    shock_2 = "w_empw_neighbor_IPW_US",
     instrument_1 = "w_IPW_OTH",
-    instrument_2 = "w_ex_mean_dest_IPW_OTH",
+    instrument_2 = "w_empw_neighbor_IPW_OTH",
     start_year = 2000,
     end_year = 2007,
     horizons = 0:7,
@@ -909,7 +985,7 @@ run_lp_multiple_shocks_heterogeneity <- function(
   
   results[, `:=`(
     coef = NA_real_,
-    se = NA_real_,
+    se = NA_real_, r2 = NA_real_, adj_r2 = NA_real_,
     N = NA_integer_
   )]
   
@@ -945,7 +1021,9 @@ run_lp_multiple_shocks_heterogeneity <- function(
           `:=`(
             coef = coef(mod)[fit_s],
             se = se(mod)[fit_s],
-            N = nobs(mod)
+            N = nobs(mod),
+            r2 = lp_fit_stats(mod)[["r2"]],
+            adj_r2 = lp_fit_stats(mod)[["adj_r2"]]
           )
         ]
       }
@@ -964,7 +1042,7 @@ run_lp_multiple_shocks_heterogeneity <- function(
             fifelse(
               shock == shock_1,
               "Own-county exposure",
-              "Neighbor exposure"
+              lp_secondary_shock_label(shock_2)
             )]
   
   # Plot
@@ -972,12 +1050,7 @@ run_lp_multiple_shocks_heterogeneity <- function(
     
     p <- ggplot(
       results,
-      aes(
-        x = h,
-        y = coef,
-        color = shock_label,
-        fill = shock_label
-      )
+      aes(x = h, y = coef, color = shock_label, fill = shock_label)
     ) +
       geom_hline(
         yintercept = 0,
@@ -1011,7 +1084,11 @@ run_lp_multiple_shocks_heterogeneity <- function(
         legend.position = "bottom"
       )
     
-    print(p)
+    save_lp_shock_figures(
+      p, results, shock_1,
+      filename = paste0("coastal_count_", outcome, "_", date, ".pdf"),
+      output_dir = figs, height = 4, width = 8
+    )
   }
   
   return(results[])
@@ -1046,9 +1123,9 @@ export_lp_table <- function(
   
   # Significance stars (normal approximation)
   dt[, stars := fifelse(
-    abs(coef / se) >= qnorm(.9995), "***",
+    abs(coef / se) >= qnorm(.995), "***",
     fifelse(
-      abs(coef / se) >= qnorm(.995), "**",
+      abs(coef / se) >= qnorm(.975), "**",
       fifelse(abs(coef / se) >= qnorm(.95), "*", "")
     )
   )]
@@ -1112,6 +1189,19 @@ export_lp_table <- function(
   
   tab <- rbindlist(rows)
   
+  # Each model has one fit statistic per horizon, shared by both shock rows.
+  for (stat in c("r2", "adj_r2")) {
+    stat_label <- if (stat == "r2") "Within R-squared" else "Adjusted R-squared"
+    stat_row <- dt[shock == shock_1, .(
+      shock_label = stat_label,
+      h,
+      coefficient = sprintf(paste0("%.", digits, "f"), get(stat))
+    )]
+    stat_wide <- dcast(stat_row, shock_label ~ h, value.var = "coefficient")
+    setcolorder(stat_wide, names(tab))
+    tab <- rbind(tab, stat_wide, fill = TRUE)
+  }
+
   setnames(
     tab,
     c("shock_label", as.character(horizons)),
@@ -1167,9 +1257,9 @@ export_lp_single_table <- function(
   stopifnot(all(horizons %in% dt$h))
   
   dt[, stars := fifelse(
-    abs(coef / se) >= qnorm(.9995), "***",
+    abs(coef / se) >= qnorm(.995), "***",
     fifelse(
-      abs(coef / se) >= qnorm(.995), "**",
+      abs(coef / se) >= qnorm(.975), "**",
       fifelse(abs(coef / se) >= qnorm(.95), "*", "")
     )
   )]
@@ -1182,7 +1272,9 @@ export_lp_single_table <- function(
   tab <- as.data.frame(
     rbind(
       c("Import exposure", estimates),
-      c("", errors)
+      c("", errors),
+      c("Within R-squared", sprintf(fmt, dt$r2)),
+      c("Adjusted R-squared", sprintf(fmt, dt$adj_r2))
     ),
     stringsAsFactors = FALSE
   )

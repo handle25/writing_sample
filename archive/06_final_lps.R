@@ -13,19 +13,10 @@ figure_4 <- T
 date <- Sys.Date()
 
 # qcewdata 
-source("C:/Users/Sophie/Desktop/phd_apps/writing_sample/code/writing_sample/utilities.R")
 # read in data -----------------------------------------------------------------
-reg <- fread(paste0(path, "/output/lp_transformed_reg.csv"))
-
-
-toplot <- reg |> fgroup_by(year) |> 
-  fsummarize(mean = mean(w_IPW_US))
-ggplot(toplot, aes(
-  x = year, 
-  y = mean
-))+
-  geom_line()
-setorder(reg, area_fips, year)
+source("C:/Users/Sophie/Desktop/phd_apps/writing_sample/code/writing_sample/utilities.R")
+run_date <- date
+reg <- fread(paste0(path, "/output/lp_transformed_reg_", run_date, ".csv"))
 # reg <- reg[year != 2009]
 reg <- reg[year<2020]
 reg <- reg[year>1994]
@@ -42,35 +33,207 @@ reg[, l1_w_ex_mean_work_IPW_US := shift(w_ex_mean_work_IPW_US, n = 1), by = area
 
 
 shocks <- grep("IPW", names(reg), value=TRUE)
-for (v in shocks) reg[, (paste0("l1_", v)) := shift(get(v), 1), by=area_fips]
+# for (v in shocks) reg[, (paste0("l1_", v)) := shift(get(v), 1), by=area_fips]
 
-shocks <- grep("empw", names(reg), value=TRUE)
-for (v in shocks) winsor(reg, v, p = .02)
+shocks <- grep("empw|mean", names(reg), value=TRUE)
+for (v in shocks) winsor(reg, v, p = .01)
 reg[, unemployed := as.double(unemployed)]
 
+reg[, state_fips := substr(sprintf("%05d", as.integer(as.character(area_fips))), 1, 2)]
+
+coastal_fips <- c("01", "02", "06", "09", "10", "12", "13", "15",
+                  "22", "23", "24", "25", "28", "33", "34", "36",
+                  "37", "41", "44", "45", "48", "51", "53")
+
+reg[, coastal_group := fifelse(
+  is.na(state_fips), NA_character_,
+  fifelse(state_fips %in% coastal_fips,
+          "A. Coastal states", "B. Other states")
+)]
+
+open_var <- "outside_jobs_share_resident_emp"
+
+base_open <- reg[
+  year == 2000 & is.finite(get(open_var)),
+  .(openness_2000 = mean(get(open_var))),
+  by = area_fips
+]
+
+median_open <- median(base_open$openness_2000)
+
+base_open[, openness_group := fifelse(
+  openness_2000 > median_open,
+  "High openness", "Low openness"
+)]
+
+reg[, c("openness_2000", "openness_group") := NULL]
+
+reg[base_open, on = "area_fips", `:=`(
+  openness_2000 = i.openness_2000,
+  openness_group = i.openness_group
+)]
+
+
+setorder(reg, area_fips, year)
+
+# Fill missing 2001 commuting values using each county's 2000 value.
+reg[reg[year == 2000, .(area_fips, value_2000 = com_outside_jobs)],
+    on = .(area_fips),
+    com_outside_jobs := fifelse(
+      year == 2001 & is.na(com_outside_jobs),
+      i.value_2000,
+      com_outside_jobs
+    )]
+
+reg[reg[year == 2000, .(area_fips, value_2000 = aux_outside_jobs)],
+    on = .(area_fips),
+    aux_outside_jobs := fifelse(
+      year == 2001 & is.na(aux_outside_jobs),
+      i.value_2000,
+      aux_com_outside_jobs
+    )]
+
+commuting_two_shock <- run_lp_multiple_shocks(
+  reg,
+  outcome = "com_outside_jobs",
+  denominator = "labor_force",
+  shock_1 = "w_IPW_US",
+  shock_2 = "w_mean_neighbor_IPW_US",
+  instrument_1 = "w_IPW_OTH",
+  instrument_2 = "w_mean_neighbor_IPW_OTH",
+  controls = "+l1_own_shock_1+population",
+  start_year = 2000,
+  end_year = 2015, 
+  horizons = c(0:6)
+)
+
+commuting_two_shock <- run_lp_multiple_shocks(
+  reg,
+  outcome = "aux_outside_jobs",
+  denominator = "aux_resident_emp",
+  shock_1 = "w_IPW_US",
+  shock_2 = "w_mean_neighbor_IPW_US",
+  instrument_1 = "w_IPW_OTH",
+  instrument_2 = "w_mean_neighbor_IPW_OTH",
+  controls = "+l1_own_shock_1+population",
+  start_year = 2000,
+  end_year = 2015,
+  horizons = c(0:6)
+)
+
+commuting_two_shock <- run_lp_multiple_shocks(
+  reg,
+  outcome = "aux_com_outside_jobs",
+  denominator = "labor_force",
+  shock_1 = "w_IPW_US",
+  shock_2 = "w_empw_neighbor_IPW_US",
+  instrument_1 = "w_IPW_OTH",
+  instrument_2 = "w_empw_neighbor_IPW_OTH",
+  controls = "+l1_own_shock_1",
+  start_year = 2000,
+  end_year = 2015,
+  horizons = 0:7,
+  table_horizons = 0:7,
+  height = 4,
+  width = 7
+)
+
+
+commuting_two_shock <- run_lp_multiple_shocks(
+  reg,
+  outcome = "rw_share_into_less_exposed",
+  denominator = "resident_emp",
+  shock_1 = "w_IPW_US",
+  shock_2 = "w_empw_neighbor_IPW_US",
+  instrument_1 = "w_IPW_OTH",
+  instrument_2 = "w_empw_neighbor_IPW_OTH",
+  controls = "+l1_own_shock_1+population",
+  start_year = 2000,
+  end_year = 2015,
+  horizons = 0:7,
+  table_horizons = 0:7,
+  height = 4,
+  width = 7
+)
+
+reg[,test :=aux_com_outside_jobs/labor_force]
+winsor(reg, "test")
+run_lp_ratio(reg, "w_test", start_year=2003, end_year=2015,
+             shock = "w_IPW_US", 
+             instrument ="w_IPW_OTH")
+
+lf_multi <- run_lp_ratio_multiple_shocks(
+  reg,
+  outcome="w_test",
+  shock_1="w_IPW_US",
+  shock_2="w_mean_neighbor_IPW_US",
+  instrument_1="w_IPW_OTH",
+  instrument_2="w_mean_neighbor_IPW_OTH",
+  start_year=2003,
+  end_year=2015
+)
 
 
 # run regressions --------------------------------------------------------------
-run_lp_lagged_denom(reg, outcome="outside_goods_jobs_share_outside_jobs", 
-                    denominator="resident_emp",
-                    controls="+l1_own_shock",
-                    start_year = 1998, 
-                    end_year = 2008)
+# run_lp_lagged_denom(reg, outcome="outside_goods_jobs_share_outside_jobs", 
+#                     denominator="resident_emp",
+#                     controls="+l1_own_shock",
+#                     start_year = 1998, 
+#                     end_year = 2008)
 
 run_lp_ratio(reg, "ew_share_into_less_exposed", start_year=1998, end_year=2015,
              shock = "w_IPW_US", 
              instrument ="w_IPW_OTH")
 
 
+reg[, commute_under30 := rowSums(.SD), .SDcols = paste0("commute_", c("lt5", "5_9", "10_14", "15_19", "20_24", "25_29"), "E")]
+reg[, commute_30_59 := rowSums(.SD), .SDcols = paste0("commute_", c("30_34", "35_39", "40_44", "45_59"), "E")]
+reg[, commute_60plus_new := rowSums(.SD), .SDcols = paste0("commute_", c("60_89", "90plus"), "E")]
+reg[, commute_30plus := commute_30_59 + commute_60plus_new]
+reg[, tot_commuters := commute_under30 + commute_30_59 + commute_60plus_new]
+reg[, agg_per_pers := commute_under30 / tot_commuters]
+winsor(reg, "agg_per_pers")
+run_lp_ratio(reg, "w_agg_per_pers", start_year=2005, end_year=2015,
+             shock = "w_IPW_US", 
+             instrument ="w_IPW_OTH")
+
+
 lf_multi <- run_lp_ratio_multiple_shocks(
   reg,
-  outcome="w_outside_jobs_share_workplace_emp",
+  outcome="w_agg_per_pers",
+  shock_1="w_IPW_US",
+  shock_2="w_empw_neighbor_IPW_US",
+  instrument_1="w_IPW_OTH",
+  instrument_2="w_empw_neighbor_IPW_OTH",
+  start_year=2007,
+  end_year=2015
+)
+
+lf_multi <- run_lp_ratio_multiple_shocks(
+  reg,
+  outcome="rw_share_into_higher_agi",
   shock_1="w_IPW_US",
   shock_2="w_empw_neighbor_IPW_US",
   instrument_1="w_IPW_OTH",
   instrument_2="w_empw_neighbor_IPW_OTH",
   start_year=1995,
   end_year=2015
+)
+reg18 <- reg[year<2018]
+lf_hetero <- run_lp_ratio_multiple_shocks_heterogeneity(
+  reg18,
+  outcome="ew_share_into_higher_agi",
+  group_var="openness_group",
+  shock_1="w_IPW_US",
+  shock_2="w_empw_neighbor_IPW_US",
+  instrument_1="w_IPW_OTH",
+  instrument_2="w_empw_neighbor_IPW_OTH",
+  start_year=1995,
+  end_year=2015,
+  horizons=0:7,
+  controls="",
+  figure=TRUE,
+  unit="area_fips"
 )
 
 
@@ -83,6 +246,17 @@ run_lp_lagged_denom(reg, outcome="exemptions_3_inflow",
 run_lp_ratio(reg, "sh_empl_mfg", start_year=1998, end_year=2008,
              shock = "w_IPW_US", 
              instrument ="w_IPW_OTH")
+
+winsor(reg, "com_outside_share_all")
+run_lp_ratio(reg, "com_outside_share_all", start_year=1998, end_year=2008,
+             shock = "w_IPW_US", 
+             instrument ="w_IPW_OTH")
+
+
+run_lp_ratio(reg, "w_unemployed_share_labor_force", start_year=1998, end_year=2008,
+             shock = "w_IPW_US", 
+             instrument ="w_IPW_OTH")
+
 winsor(reg, "sh_empl_mfg", p = .01)
 
 lf_multi <- run_lp_ratio_multiple_shocks(
@@ -92,20 +266,10 @@ lf_multi <- run_lp_ratio_multiple_shocks(
   shock_2="w_empw_neighbor_IPW_US",
   instrument_1="w_IPW_OTH",
   instrument_2="w_empw_neighbor_IPW_OTH",
-  start_year=1990,
+  start_year=1995,
   end_year=2015
 )
 
-lf_multi <- run_lp_ratio_multiple_shocks(
-  reg,
-  outcome="sh_empl_mfg",
-  shock_1="w_IPW_US",
-  shock_2="w_empw_neighbor_IPW_US",
-  instrument_1="w_IPW_OTH",
-  instrument_2="w_empw_neighbor_IPW_OTH",
-  start_year=2008,
-  end_year=2015
-)
 
 ## unemployment ----------------------------------------------------------------
 run_lp_lagged_denom(reg, outcome="unemployed", 
@@ -180,11 +344,11 @@ lf_multi <- run_lp_ratio_multiple_shocks(
 # )
 
 ## Commuting -------------------------------------------------------------------
-reg[, outside_jobs_share_l1_labor_force := outside_jobs / shift(population) , by = area_fips]
+reg[, outside_jobs_share_l1_labor_force := outside_jobs / shift(labor_force) , by = area_fips]
 winsor(reg, "outside_jobs_share_l1_labor_force")
 run_lp_ratio(reg, "w_outside_jobs_share_l1_labor_force", 
              start_year=2000, 
-             end_year=2015,
+             end_year=2010,
              shock = "w_IPW_US", 
              instrument ="w_IPW_OTH")
 
@@ -196,15 +360,34 @@ reg[, l1_labor_force := shift(labor_force), by = area_fips]
 lf_multi <- run_lp_multiple_shocks(
   reg,
   outcome="com_outside_jobs",
-  denominator="labor_force", # or resident_emp
+  denominator="resident_emp", # or resident_emp
   shock_1="w_IPW_US",
-  shock_2="w_mean_neighbor_IPW_US",
+  shock_2="w_empw_neighbor_IPW_US",
   instrument_1="w_IPW_OTH",
-  instrument_2="w_mean_neighbor_IPW_OTH",
+  instrument_2="w_empw_neighbor_IPW_OTH",
   controls="+l1_own_shock_1+population",
   start_year=2000,
-  end_year=2015
+  end_year=2015, 
+  height = 4, 
+  width = 7 , 
+  horizons = 0:6,
+  table_horizons = c(0:7)
 )
+
+reg[, com_outside_jobs_share_resident_emp := com_outside_jobs / resident_emp]
+winsor(reg, "com_outside_jobs_share_resident_emp")
+lf_multi <- run_lp_ratio_multiple_shocks(
+  reg,
+  outcome="w_com_outside_jobs_share_resident_emp",
+  shock_1="w_IPW_US",
+  shock_2="w_empw_neighbor_IPW_US",
+  instrument_1="w_IPW_OTH",
+  instrument_2="w_empw_neighbor_IPW_OTH",
+  start_year=2000, 
+  end_year=2008, 
+  horizons = 0:6
+)
+
 
 reg[, ld_pop := log(population) - log(shift(population)), by = area_fips]
 

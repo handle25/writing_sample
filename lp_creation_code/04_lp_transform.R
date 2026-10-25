@@ -8,14 +8,18 @@ rm(list = ls())
 # Paths ------------------------------------------------------------------------
 
 source("C:/Users/Sophie/Desktop/phd_apps/writing_sample/code/writing_sample/utilities.R")
+run_date <- format(Sys.Date(), "%Y-%m-%d")
 
 # Basic regression variables ---------------------------------------------------
-reg <- fread(paste0(path, "/output/lp_merged.csv"))
+# Set input_date to an earlier date if transforming a previous merge.
+input_date <- run_date
+reg <- fread(paste0(path, "/output/lp_merged_", input_date, ".csv"))
 
 reg <- make_base_year(reg, "population", 2000)
 reg <- make_base_year(reg, "population", 2007)
 reg <- make_base_year(reg, "workplace_emp", 2000)
 reg <- make_base_year(reg, "resident_emp", 2000)
+reg <- make_base_year(reg, "aux_resident_emp", 2000)
 
 # Migration --------------------------------------------------------------------
 reg[, exemptions_net_migration := exemptions_3_inflow - exemptions_3_outflow]
@@ -54,6 +58,16 @@ make_share(reg, "workplace_emp", "resident_emp")
 make_share(reg, "unemployed", "labor_force")
 make_share(reg, "labor_force", "population")
 
+# Full LODES measures (main + auxiliary; aux_ names retained from 03).
+# Use the full resident-job count when normalizing full outward commuting.
+make_share(reg, "aux_resident_emp", "population")
+make_share(reg, "workplace_emp", "aux_resident_emp")
+make_share(reg, "aux_outside_jobs", "aux_resident_emp")
+make_share(reg, "aux_outside_jobs", "workplace_emp")
+make_share(reg, "aux_outside_jobs", "population")
+make_share(reg, "aux_outside_jobs", "labor_force")
+winsor(reg, "aux_outside_d_jobs")
+
 # LODES employment composition
 
 level_vars <- c(
@@ -73,14 +87,14 @@ shock_vars <- c(
   "IPW_US", "IPW_OTH",
   "IPW_US_pop", "IPW_OTH_pop",
   "IPW_US_wap", "IPW_OTH_wap",
-  grep("^(ex|fn)_.*IPW_(US|OTH)$", names(reg), value=TRUE)
+  grep("^(aux_)?(ex|fn)_.*IPW_(US|OTH)$", names(reg), value=TRUE)
 )
 
 shock_vars <- unique(shock_vars)
 
 for (i in shock_vars) winsor(reg, i)
 # Network shocks only
-network_vars <- grep("^(ex|fn)_",shock_vars,value=TRUE)
+network_vars <- grep("^(aux_)?(ex|fn)_",shock_vars,value=TRUE)
 
 # Carry 1990 network values through 1999; 2000 through 2001
 reg[, (network_vars) := lapply(.SD,function(x) {
@@ -99,7 +113,7 @@ for(v in network_vars) {
 # Save
 fwrite(
   reg,
-  paste0(path, "/output/lp_transformed_reg.csv"))
+  paste0(path, "/output/lp_transformed_reg_", run_date, ".csv"))
 
 county_conditions <- reg[, .(
   area_fips,
@@ -112,4 +126,4 @@ county_conditions <- reg[, .(
 
 fwrite(
   county_conditions,
-  paste0(path, "/output/lp_shock_exposure.csv"))
+  paste0(path, "/output/lp_shock_exposure_", run_date, ".csv"))

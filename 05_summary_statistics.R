@@ -169,3 +169,7 @@ ggplot(map_sf) +
   )
 
 ggsave(paste0(path, "/../figures/map_", var, ".pdf"))
+
+
+
+commute <- reg[,.(mean = weighted.mean(outside_jobs_share_population, na.rm = T, w = population_2000)) , by = year]

@@ -40,7 +40,7 @@ neighbors_ipw <- merge(
   by.x=c("neighbor","year"),
   by.y=c("area_fips","year"),
   all.x=TRUE
-)Z
+)
 
 setnames(neighbors_ipw,c("IPW_US","IPW_OTH"),c("neighbor_IPW_US","neighbor_IPW_OTH"))
 

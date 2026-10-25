@@ -32,7 +32,6 @@ output_dir <- paste0(path, "/raw")
 states <- tolower(state.abb)
 years <- 2002:2025
 
-
 # Pull and collapse ------------------------------------------------------------
 for (s in states) {
   
@@ -277,6 +276,12 @@ setnames(usa_1990,"workers","S000")
 usa_1990 <- usa_1990[, .(S000=sum(S000,na.rm=TRUE)), by=.(county,w_county,year)]
 
 # save all files into one appended file ----------------------------------------
+
+old_combined <- fread(
+  file.path(output_dir, "full_lodes_data_1990-2025.csv")
+)
+usa_1990 <- old_combined[year == 1990]
+usa_2000 <- old_combined[year == 2000]
 files <- list.files(
   output_dir,
   pattern="^county_od_lodes_.*\\.csv$",
