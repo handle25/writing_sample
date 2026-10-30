@@ -1,22 +1,37 @@
-
 # paths ------------------------------------------------------------------------
-path <- "D:/writing_sample/data"
+external <- "D:/writing_sample/data"
 local <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
-tryCatch(
-  expr = {
-    setwd(path)
-  },
-  error = function(e) {
-    # This code runs ONLY if an error occurs
-    message("can't change wd to external drive, working locally \n", e$message)
-    setwd(local)
-  }
-)
+external_available <- dir.exists(external)
+path <- if (external_available) external else local
+setwd(path)
 source(paste0(local, "/../code/writing_sample/00_load_workspace.R"))
-figs <- paste0(getwd(), "/../", "figures")
+figs <- file.path(dirname(path), "figures")
+
+# Save only when the external drive is available. Plotting remains enabled.
+lp_save_outputs <- function() dir.exists(external)
+if (!external_available) message("External drive unavailable: using local data; display-only LP mode.")
+
+read_lp_panel <- function(input_date) {
+  csv <- file.path(path, "output", paste0("lp_transformed_reg_", input_date, ".csv"))
+  if (file.exists(csv)) return(fread(csv))
+  backup <- file.path(local, "output", "reg_session_backup_2026-10-29.rds")
+  if (!external_available && file.exists(backup)) {
+    message("Dated CSV unavailable; loading local working-session backup: ", backup,
+      "\nThis backup may already contain transformations and exclusions.")
+    return(as.data.table(readRDS(backup)))
+  }
+  stop("Regression panel not found: ", csv)
+}
+
+options(lp.final_figure_dir = NULL)
 # Functions --------------------------------------------------------------------
 
 winsor <- function(dt, var, p = 0.01) {
+  stopifnot(is.numeric(p), length(p) == 1L, is.finite(p), p >= 0, p < 0.5)
+  if (p == 0) {
+    dt[, (paste0("w_", var)) := get(var)]
+    return(invisible(dt))
+  }
   q <- quantile(dt[[var]], probs = c(p, 1 - p), na.rm = TRUE)
   
   w_var <- paste0("w_", var)
@@ -94,14 +109,27 @@ lp_secondary_shock_label <- function(shock) {
 
 save_lp_single_figure <- function(plot, filename, output_dir = figs,
                                  height = 4, width = 4) {
+  if (!lp_save_outputs()) { print(plot); return(invisible(plot)) }
   single_dir <- file.path(output_dir, "single")
-  dir.create(single_dir, recursive = TRUE, showWarnings = FALSE)
-  ggsave(file.path(single_dir, filename), plot,
+  if (lp_save_outputs()) dir.create(single_dir, recursive = TRUE, showWarnings = FALSE)
+  if (lp_save_outputs()) ggsave(file.path(single_dir, filename), plot,
          height = height, width = width, bg = "white")
 }
 
+# Optional stable copies in addition to the normal timestamped run outputs.
+lp_save_final_copy <- function(plot, filename, period, view = "", height = 4, width = 7) {
+  output_dir <- getOption("lp.final_figure_dir", NULL)
+  if (is.null(output_dir) || !lp_save_outputs()) return(invisible(NULL))
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+  stem <- sub("\\.pdf$", "", filename)
+  stem <- gsub("_[0-9]{4}-[0-9]{2}-[0-9]{2}", "", stem)
+  stable_name <- paste0(stem, "_", period, view, ".pdf")
+  ggsave(file.path(output_dir, stable_name), plot,
+    height = height, width = width, bg = "white")
+}
+
 save_lp_shock_figures <- function(full_plot, results, shock_1, filename,
-                                  output_dir = figs, height = 4, width = 7) {
+                                  output_dir = figs, height = 4, width = 7, period = NULL) {
   own_results <- results[results$shock == shock_1, ]
   if (!nrow(own_results)) stop("Own-shock plotting data is empty.")
 
@@ -120,19 +148,23 @@ save_lp_shock_figures <- function(full_plot, results, shock_1, filename,
 
   multi_dir <- file.path(output_dir, "multi")
   appendix_dir <- file.path(output_dir, "appendix", "multi")
-  dir.create(multi_dir, recursive = TRUE, showWarnings = FALSE)
-  dir.create(appendix_dir, recursive = TRUE, showWarnings = FALSE)
-  ggsave(file.path(multi_dir, filename), own_plot,
+  if (lp_save_outputs()) dir.create(multi_dir, recursive = TRUE, showWarnings = FALSE)
+  if (lp_save_outputs()) dir.create(appendix_dir, recursive = TRUE, showWarnings = FALSE)
+  if (lp_save_outputs()) ggsave(file.path(multi_dir, filename), own_plot,
          height = height, width = width, bg = "white")
-  ggsave(file.path(appendix_dir, filename), full_plot,
+  if (lp_save_outputs()) ggsave(file.path(appendix_dir, filename), full_plot,
          height = height, width = width, bg = "white")
+  if (!is.null(period)) {
+    lp_save_final_copy(own_plot, filename, period, height = height, width = width)
+    lp_save_final_copy(full_plot, filename, period, view = "_both_shocks", height = height, width = width)
+  }
   print(own_plot)
   invisible(list(own = own_plot, full = full_plot))
 }
 
 save_lp_heterogeneity_figures <- function(full_plot, results, shock_1, filename,
                                           output_dir = figs, height = 4, width = 8) {
-  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+  if (lp_save_outputs()) dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
   # Additional display scaling only; returned estimates and table data stay unchanged.
   results <- copy(results)
   display_columns <- c("coef", "lower90", "upper90", "lower95", "upper95")
@@ -147,9 +179,9 @@ save_lp_heterogeneity_figures <- function(full_plot, results, shock_1, filename,
     scale_fill_manual(values = palette) + facet_wrap(~group, nrow = 1, scales = "free_y")
   own_plot <- full_plot %+% own + theme(legend.position = "none")
   stem <- sub("\\.pdf$", "", filename)
-  ggsave(file.path(output_dir, paste0(stem, "_both_shocks.pdf")), full_plot,
+  if (lp_save_outputs()) ggsave(file.path(output_dir, paste0(stem, "_both_shocks.pdf")), full_plot,
          height = height, width = width, bg = "white")
-  ggsave(file.path(output_dir, paste0(stem, "_own_shock.pdf")), own_plot,
+  if (lp_save_outputs()) ggsave(file.path(output_dir, paste0(stem, "_own_shock.pdf")), own_plot,
          height = height, width = width, bg = "white")
   print(full_plot)
   invisible(list(own = own_plot, full = full_plot))
@@ -159,6 +191,68 @@ save_lp_heterogeneity_figures <- function(full_plot, results, shock_1, filename,
 # run_lp runs regressions that are base diffs 
 # output: single shock vars 
 # can also take in no denominator vars for difference in shares as well. 
+
+# Write one tidy CSV per LP call. No rescaling or averaging of stored estimates.
+write_lp_results_csv <- function(results, depvar, model, shock_instruments,
+                                 start_year, end_year, controls = "", denominator = NA_character_,
+                                 unit = "area_fips", group_var = NA_character_, output_suffix = "",
+                                 outcome_scale = 100, output_dir = file.path(figs, "results")) {
+  if (!lp_save_outputs()) return(invisible(results))
+  dt <- copy(as.data.table(results))
+  stopifnot(all(c("h", "coef", "se") %in% names(dt)))
+  setnames(dt, "h", "horizon")
+  if (!"shock" %in% names(dt)) dt[, shock := names(shock_instruments)[1L]]
+  if (!"group" %in% names(dt)) dt[, group := NA_character_]
+  # Preserve the actual confidence boundaries used in the figures.
+  if (!"lower90" %in% names(dt)) dt[, lower90 := coef - qnorm(0.95) * se]
+  if (!"upper90" %in% names(dt)) dt[, upper90 := coef + qnorm(0.95) * se]
+  if (!"lower95" %in% names(dt)) dt[, lower95 := coef - 1.96 * se]
+  if (!"upper95" %in% names(dt)) dt[, upper95 := coef + 1.96 * se]
+  dt[, `:=`(depvar = depvar, model = model, denominator = denominator,
+             controls = controls, start_year = start_year, end_year = end_year,
+             unit = unit, group_var = group_var, output_suffix = output_suffix,
+             outcome_scale = outcome_scale)]
+  dt[, instrument := unname(shock_instruments[shock])]
+  dt[, shock_role := fifelse(shock == names(shock_instruments)[1L], "own", "neighbor")]
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+  # Numbered filenames preserve separate calls even when outcome and years coincide.
+  number <- length(list.files(output_dir, pattern = "\\.csv$")) + 1L
+  slug <- gsub("[^A-Za-z0-9_-]", "_", paste0(model, "_", depvar, "_", start_year, "_", end_year, output_suffix))
+  filename <- sprintf("%03d_%s.csv", number, slug)
+  while (file.exists(file.path(output_dir, filename))) {
+    number <- number + 1L
+    filename <- sprintf("%03d_%s.csv", number, slug)
+  }
+  dt[, model_id := sub("\\.csv$", "", filename)]
+  first <- c("model_id", "depvar", "model", "horizon", "shock", "shock_role", "instrument",
+             "coef", "se", "lower90", "upper90", "lower95", "upper95", "group")
+  setcolorder(dt, c(first, setdiff(names(dt), first)))
+  fwrite(dt, file.path(output_dir, filename), na = "NA")
+  invisible(dt)
+}
+
+combine_lp_results_csv <- function(input_dir, output_file) {
+  if (!lp_save_outputs()) return(invisible(NULL))
+  files <- list.files(input_dir, pattern = "\\.csv$", full.names = TRUE)
+  files <- files[normalizePath(files, winslash = "/", mustWork = FALSE) !=
+                   normalizePath(output_file, winslash = "/", mustWork = FALSE)]
+  if (!length(files)) stop("No per-regression CSVs found in ", input_dir)
+  results <- rbindlist(lapply(files, fread, na.strings = "NA"), use.names = TRUE, fill = TRUE)
+  fwrite(results, output_file, na = "NA")
+  invisible(results)
+}
+
+
+# Preserve the original single-shock result and attach the lag-control comparison.
+lp_single_lag_comparison <- function(results, runner, args) {
+  if (is.null(args) || grepl("\\bl1_own_shock\\b", args$controls)) return(results)
+  args$controls <- paste0(args$controls, "+l1_own_shock")
+  args$lagged_shock_comparison <- FALSE
+  args$output_suffix <- paste0(args$output_suffix, "_lagged_own_shock")
+  lagged <- do.call(runner, args)
+  attr(results, "lagged_shock_comparison") <- lagged
+  results
+}
 
 ## run_lp_lagged_denom ---------------------------------------------------------
 run_lp_lagged_denom <- function(
@@ -175,8 +269,13 @@ run_lp_lagged_denom <- function(
     table = TRUE, 
     table_horizons = horizons,
     unit = "area_fips",
-    table_output_dir = figs
+    table_output_dir = figs,
+    lagged_shock_comparison = TRUE,
+    output_suffix = "",
+    results_output_dir = file.path(figs, "results")
 ) {
+  comparison_args <- if (lagged_shock_comparison)
+    mget(names(formals(sys.function())), envir = environment(), inherits = FALSE) else NULL
   reg <- copy(reg)
   
   # Make sure shifts are chronological
@@ -225,14 +324,6 @@ run_lp_lagged_denom <- function(
   # Restrict to estimation period AFTER constructing leads/lags
   reg_est <- reg[year %in% start_year:end_year]
   
-  # Winsorize LP outcome separately at each horizon
-  for (h in horizons) {
-    
-    dvar <- paste0("diff_", h)
-    
-    winsor(reg_est, dvar)
-  }
-  
   # Store results
   results <- data.table(
     h = horizons,
@@ -243,7 +334,7 @@ run_lp_lagged_denom <- function(
   # Run LPs
   for (hh in horizons) {
     
-    var <- paste0("w_diff_", hh)
+    var <- paste0("diff_", hh)
     
     mod <- feols(
       as.formula(
@@ -273,8 +364,8 @@ run_lp_lagged_denom <- function(
   
   # Confidence intervals
   results[, `:=`(
-    lower90 = coef - 1.64 * se,
-    upper90 = coef + 1.64 * se,
+    lower90 = coef - qnorm(0.95) * se,
+    upper90 = coef + qnorm(0.95) * se,
     lower95 = coef - 1.96 * se,
     upper95 = coef + 1.96 * se
   )]
@@ -285,20 +376,21 @@ run_lp_lagged_denom <- function(
     p <- ggplot(results, aes(x = h, y = coef)) +
       geom_hline(yintercept = 0, linetype = "dashed") +
       geom_ribbon(aes(ymin = lower95, ymax = upper95),
-                  fill = "#F8766D", alpha = .10, color = NA) +
+        fill = "#F8766D", alpha = 0.10, color = NA) +
       geom_ribbon(aes(ymin = lower90, ymax = upper90),
-                  fill = "#F8766D", alpha = .18, color = NA) +
+        fill = "#F8766D", alpha = 0.18, color = NA) +
       geom_line(color = "#F8766D", linewidth = .8) +
       geom_point(color = "#F8766D", size = 2) +
       scale_x_continuous(breaks = horizons) +
-      labs(x = "Horizon", y = "Coefficient") +
+      labs(x = "Horizon", y = "Coefficient", caption = "90% and 95% pointwise confidence intervals",
+           subtitle = paste0("Shock years: ", start_year, "-", end_year)) +
       theme_minimal() +
       theme(legend.position = "none")
     
     save_lp_single_figure(
       p,
       filename = paste0("differenced_lp_", outcome, "_share_", denominator,
-                        "_", shock, "_", date, ".pdf"),
+                        "_", shock, "_", date, output_suffix, ".pdf"),
       output_dir = figs, height = 4, width = 7
     )
     print(p)
@@ -314,12 +406,21 @@ run_lp_lagged_denom <- function(
       filename = paste0(
         "differenced_lp_",
         outcome, "_share_", denominator, "_",
-        shock, "_", date
+        shock, "_", date, output_suffix
       )
     )
     
   }
   
+  results <- lp_single_lag_comparison(results, run_lp_lagged_denom, comparison_args)
+  write_lp_results_csv(
+    results, depvar = outcome, model = "single_shock_lagged_denom_change",
+    shock_instruments = setNames(instrument, shock),
+    start_year = start_year, end_year = end_year, controls = controls,
+    denominator = denominator, unit = unit, group_var = NA_character_,
+    output_suffix = output_suffix, outcome_scale = 100,
+    output_dir = results_output_dir
+  )
   return(results)
 }
 
@@ -343,7 +444,8 @@ run_lp_multiple_shocks <- function(
     unit = "area_fips", 
     height = 4, 
     width = 4,
-    table_output_dir = figs
+    table_output_dir = figs,
+    results_output_dir = file.path(figs, "results")
 ) {
   
   reg <- copy(reg)
@@ -377,7 +479,6 @@ run_lp_multiple_shocks <- function(
   
   reg_est <- reg[year %in% start_year:end_year]
   
-  for (h in horizons) winsor(reg_est, paste0("diff_", h))
   
   # Long-form results: one row per horizon x shock
   results <- CJ(
@@ -389,7 +490,7 @@ run_lp_multiple_shocks <- function(
   
   for (hh in horizons) {
     
-    var <- paste0("w_diff_", hh)
+    var <- paste0("diff_", hh)
     
     mod <- feols(
       as.formula(paste0(
@@ -418,8 +519,8 @@ run_lp_multiple_shocks <- function(
   }
   
   results[, `:=`(
-    lower90=coef - 1.64*se,
-    upper90=coef + 1.64*se,
+    lower90=coef - qnorm(0.95)*se,
+    upper90=coef + qnorm(0.95)*se,
     lower95=coef - 1.96*se,
     upper95=coef + 1.96*se
   )]
@@ -434,13 +535,17 @@ run_lp_multiple_shocks <- function(
   if (figure) {
     p <- ggplot(results, aes(x=h, y=coef, color=shock_label, fill=shock_label)) +
       geom_hline(yintercept=0, linetype="dashed") +
-      geom_ribbon(aes(ymin=lower95, ymax=upper95), alpha=.10, color=NA) +
-      geom_ribbon(aes(ymin=lower90, ymax=upper90), alpha=.18, color=NA) +
+      geom_ribbon(aes(ymin = lower95, ymax = upper95),
+        alpha = 0.10, color = NA) +
+      geom_ribbon(aes(ymin = lower90, ymax = upper90),
+        alpha = 0.18, color = NA) +
       geom_line(linewidth=.8) +
       geom_point(size=2) +
       scale_x_continuous(breaks=horizons) +
       labs(
-        x="Horizon",
+        caption = "90% and 95% pointwise confidence intervals",
+        subtitle = paste0("Shock years: ", start_year, "-", end_year),
+        x = "Horizon",
         y="Coefficient",
         color=NULL,
         fill=NULL
@@ -452,7 +557,8 @@ run_lp_multiple_shocks <- function(
       p, results, shock_1,
       filename = paste0("differenced_multishock_lp_", outcome, "_share_", denominator,
                         "_", shock_1, "_", date, ".pdf"),
-      output_dir = figs, height = height, width = width
+      output_dir = figs, height = height, width = width,
+      period = paste0(start_year, "_", end_year)
     )
   }
   
@@ -475,6 +581,14 @@ run_lp_multiple_shocks <- function(
     
   }
   
+  write_lp_results_csv(
+    results, depvar = outcome, model = "two_shock_lagged_denom_change",
+    shock_instruments = setNames(c(instrument_1, instrument_2), c(shock_1, shock_2)),
+    start_year = start_year, end_year = end_year, controls = controls,
+    denominator = denominator, unit = unit, group_var = NA_character_,
+    output_suffix = "", outcome_scale = 100,
+    output_dir = results_output_dir
+  )
   return(results[])
 }
 
@@ -493,9 +607,16 @@ run_lp_ratio <- function(
     table_horizons = horizons,
     unit = "area_fips",
     table_output_dir = figs,
-    outcome_scale = 1
+    outcome_scale = 1,
+    lagged_shock_comparison = TRUE,
+    output_suffix = "",
+    results_output_dir = file.path(figs, "results")
 ) {
+  comparison_args <- if (lagged_shock_comparison)
+    mget(names(formals(sys.function())), envir = environment(), inherits = FALSE) else NULL
   reg <- copy(reg)
+  setorderv(reg, c(unit, "year"))
+  reg[, l1_own_shock := shift(get(shock), 1), by = unit]
   reg <- reg[!is.na(get(outcome)) & year <= end_year + max(horizons)]
   reg <- reg[get(unit) %in% reg[, .N, by=unit][N == uniqueN(reg$year), get(unit)]]
   setorderv(reg, c(unit, "year"))
@@ -512,11 +633,10 @@ run_lp_ratio <- function(
   
   reg_est <- reg[year %in% start_year:end_year]
   
-  for (h in horizons) winsor(reg_est, paste0("diff_", h))
   results <- data.table(h=horizons, coef=NA_real_, se=NA_real_, r2=NA_real_, adj_r2=NA_real_)
   
   for (hh in horizons) {
-    var <- paste0("w_diff_", hh)
+    var <- paste0("diff_", hh)
     
     mod <- feols(
       as.formula(paste0(
@@ -541,8 +661,8 @@ run_lp_ratio <- function(
   }
   
   results[, `:=`(
-    lower90=coef - 1.64*se,
-    upper90=coef + 1.64*se,
+    lower90=coef - qnorm(0.95)*se,
+    upper90=coef + qnorm(0.95)*se,
     lower95=coef - 1.96*se,
     upper95=coef + 1.96*se
   )]
@@ -551,18 +671,19 @@ run_lp_ratio <- function(
     p <- ggplot(results, aes(x = h, y = coef)) +
       geom_hline(yintercept = 0, linetype = "dashed") +
       geom_ribbon(aes(ymin = lower95, ymax = upper95),
-                  fill = "#F8766D", alpha = .10, color = NA) +
+        fill = "#F8766D", alpha = 0.10, color = NA) +
       geom_ribbon(aes(ymin = lower90, ymax = upper90),
-                  fill = "#F8766D", alpha = .18, color = NA) +
+        fill = "#F8766D", alpha = 0.18, color = NA) +
       geom_line(color = "#F8766D", linewidth = .8) +
       geom_point(color = "#F8766D", size = 2) +
       scale_x_continuous(breaks = horizons) +
-      labs(x = "Horizon", y = "Coefficient") +
+      labs(x = "Horizon", y = "Coefficient", caption = "90% and 95% pointwise confidence intervals",
+           subtitle = paste0("Shock years: ", start_year, "-", end_year)) +
       theme_minimal() +
       theme(legend.position = "none")
     
     save_lp_single_figure(
-      p, filename = paste0("baseline_lp_", outcome, "_", shock, "_", date, ".pdf"),
+      p, filename = paste0("baseline_lp_", outcome, "_", shock, "_", date, output_suffix, ".pdf"),
       output_dir = figs, height = 4, width = 7
     )
     print(p)
@@ -578,12 +699,21 @@ run_lp_ratio <- function(
       filename = paste0(
         "baseline_lp_",
         outcome, "_",
-        shock, "_", date
+        shock, "_", date, output_suffix
       )
     )
     
   }
   
+  results <- lp_single_lag_comparison(results, run_lp_ratio, comparison_args)
+  write_lp_results_csv(
+    results, depvar = outcome, model = "single_shock_ratio_change",
+    shock_instruments = setNames(instrument, shock),
+    start_year = start_year, end_year = end_year, controls = controls,
+    denominator = NA_character_, unit = unit, group_var = NA_character_,
+    output_suffix = output_suffix, outcome_scale = outcome_scale,
+    output_dir = results_output_dir
+  )
   return(results)
 }
 
@@ -606,10 +736,12 @@ run_lp_ratio_multiple_shocks <- function(
     unit = "area_fips", 
     height = 4, 
     width = 6,
-    table_output_dir = figs
+    table_output_dir = figs,
+    results_output_dir = file.path(figs, "results")
 ) {
   reg <- copy(reg)
-  reg <- reg[!is.na(get(outcome)) & year <= end_year + max(horizons)]
+  # Preserve missing calendar years until leads/lags have been constructed.
+  reg <- reg[year <= end_year + max(horizons)]
   reg <- reg[get(unit) %in% reg[, .N, by=unit][N == uniqueN(reg$year), get(unit)]]
   setorderv(reg, c(unit, "year"))
   
@@ -637,7 +769,6 @@ run_lp_ratio_multiple_shocks <- function(
   reg_est <- reg[year %in% start_year:end_year]
   
   # Winsorize each horizon separately
-  for(h in horizons) winsor(reg_est,paste0("diff_",h))
   
   # Long-form results
   results <- CJ(h=horizons,shock=c(shock_1,shock_2))
@@ -646,7 +777,7 @@ run_lp_ratio_multiple_shocks <- function(
   # Run LPs
   for(hh in horizons) {
     
-    var <- paste0("w_diff_",hh)
+    var <- paste0("diff_",hh)
     
     mod <- feols(
       as.formula(paste0(
@@ -675,8 +806,8 @@ run_lp_ratio_multiple_shocks <- function(
   
   # Confidence intervals
   results[, `:=`(
-    lower90=coef - 1.64*se,
-    upper90=coef + 1.64*se,
+    lower90=coef - qnorm(0.95)*se,
+    upper90=coef + qnorm(0.95)*se,
     lower95=coef - 1.96*se,
     upper95=coef + 1.96*se
   )]
@@ -692,13 +823,17 @@ run_lp_ratio_multiple_shocks <- function(
   if(figure) {
     p <- ggplot(results,aes(x=h,y=coef,color=shock_label,fill=shock_label)) +
       geom_hline(yintercept=0,linetype="dashed") +
-      geom_ribbon(aes(ymin=lower95,ymax=upper95),alpha=.10,color=NA) +
-      geom_ribbon(aes(ymin=lower90,ymax=upper90),alpha=.18,color=NA) +
+      geom_ribbon(aes(ymin = lower95, ymax = upper95),
+        alpha = 0.10, color = NA) +
+      geom_ribbon(aes(ymin = lower90, ymax = upper90),
+        alpha = 0.18, color = NA) +
       geom_line(linewidth=.8) +
       geom_point(size=2) +
       scale_x_continuous(breaks=horizons) +
       labs(
-        x="Horizon",
+        caption = "90% and 95% pointwise confidence intervals",
+        subtitle = paste0("Shock years: ", start_year, "-", end_year),
+        x = "Horizon",
         y="Coefficient",
         color=NULL,
         fill=NULL
@@ -709,7 +844,8 @@ run_lp_ratio_multiple_shocks <- function(
     save_lp_shock_figures(
       p, results, shock_1,
       filename = paste0("baseline_multishock_lp_", outcome, "_", shock_1, "_", date, ".pdf"),
-      output_dir = figs, height = height, width = width
+      output_dir = figs, height = height, width = width,
+      period = paste0(start_year, "_", end_year)
     )
   }
   
@@ -731,6 +867,14 @@ run_lp_ratio_multiple_shocks <- function(
     
   }
   
+  write_lp_results_csv(
+    results, depvar = outcome, model = "two_shock_ratio_change",
+    shock_instruments = setNames(c(instrument_1, instrument_2), c(shock_1, shock_2)),
+    start_year = start_year, end_year = end_year, controls = controls,
+    denominator = NA_character_, unit = unit, group_var = NA_character_,
+    output_suffix = "", outcome_scale = 100,
+    output_dir = results_output_dir
+  )
   return(results[])
 }
 
@@ -751,13 +895,13 @@ run_lp_ratio_multiple_shocks_heterogeneity <- function(
     horizons = 0:7,
     controls = "",
     figure = TRUE,
-    unit = "area_fips"
+    unit = "area_fips",
+    results_output_dir = file.path(figs, "results")
 ) {
   
   reg <- copy(reg)
   
   reg <- reg[
-    !is.na(get(outcome)) &
       !is.na(get(group_var)) &
       year <= end_year + max(horizons)
   ]
@@ -766,6 +910,7 @@ run_lp_ratio_multiple_shocks_heterogeneity <- function(
   
   setorderv(reg, c(unit, "year"))
   
+  # Keep missing outcome rows so shifts preserve calendar years.
   # Outcome and lags
   reg[, y_lp := get(outcome)]
   reg[, l1_y := shift(y_lp), by=unit]
@@ -792,22 +937,6 @@ run_lp_ratio_multiple_shocks_heterogeneity <- function(
   # Estimation period
   reg_est <- reg[year %in% start_year:end_year]
   
-  # Winsorize separately within each heterogeneity group
-  for (h in horizons) {
-    
-    var <- paste0("diff_", h)
-    wvar <- paste0("w_", var)
-    
-    reg_est[, (wvar) := {
-      q <- quantile(
-        get(var),
-        probs = c(.01, .99),
-        na.rm = TRUE
-      )
-      pmin(pmax(get(var), q[1]), q[2])
-    }, by = group_var]
-  }
-  
   # Results table
   groups <- unique(reg_est[[group_var]])
   
@@ -828,7 +957,7 @@ run_lp_ratio_multiple_shocks_heterogeneity <- function(
     
     for (hh in horizons) {
       
-      var <- paste0("w_diff_", hh)
+      var <- paste0("diff_", hh)
       
       mod <- feols(
         as.formula(
@@ -866,8 +995,8 @@ run_lp_ratio_multiple_shocks_heterogeneity <- function(
   
   # Confidence intervals
   results[, `:=`(
-    lower90 = coef - 1.64 * se,
-    upper90 = coef + 1.64 * se,
+    lower90 = coef - qnorm(0.95) * se,
+    upper90 = coef + qnorm(0.95) * se,
     lower95 = coef - 1.96 * se,
     upper95 = coef + 1.96 * se
   )]
@@ -891,22 +1020,10 @@ run_lp_ratio_multiple_shocks_heterogeneity <- function(
         yintercept = 0,
         linetype = "dashed"
       ) +
-      geom_ribbon(
-        aes(
-          ymin = lower95,
-          ymax = upper95
-        ),
-        alpha = .10,
-        color = NA
-      ) +
-      geom_ribbon(
-        aes(
-          ymin = lower90,
-          ymax = upper90
-        ),
-        alpha = .18,
-        color = NA
-      ) +
+      geom_ribbon(aes(ymin = lower95, ymax = upper95),
+        alpha = 0.10, color = NA) +
+      geom_ribbon(aes(ymin = lower90, ymax = upper90),
+        alpha = 0.18, color = NA) +
       geom_line(linewidth = .8) +
       geom_point(size = 2) +
       scale_x_continuous(
@@ -917,6 +1034,8 @@ run_lp_ratio_multiple_shocks_heterogeneity <- function(
         scales = "free_y"
       ) +
       labs(
+        caption = "90% and 95% pointwise confidence intervals",
+        subtitle = paste0("Shock years: ", start_year, "-", end_year),
         x = "Horizon",
         y = "Coefficient",
         color = NULL,
@@ -934,6 +1053,14 @@ run_lp_ratio_multiple_shocks_heterogeneity <- function(
     )
   }
   
+  write_lp_results_csv(
+    results, depvar = outcome, model = "two_shock_ratio_change",
+    shock_instruments = setNames(c(instrument_1, instrument_2), c(shock_1, shock_2)),
+    start_year = start_year, end_year = end_year, controls = controls,
+    denominator = NA_character_, unit = unit, group_var = group_var,
+    output_suffix = "", outcome_scale = 100,
+    output_dir = results_output_dir
+  )
   return(results[])
 }
 ################################################################################
@@ -954,7 +1081,8 @@ run_lp_multiple_shocks_heterogeneity <- function(
     horizons = 0:7,
     controls = "",
     figure = TRUE,
-    unit = "area_fips"
+    unit = "area_fips",
+    results_output_dir = file.path(figs, "results")
 ) {
   
   reg <- copy(reg)
@@ -999,22 +1127,6 @@ run_lp_multiple_shocks_heterogeneity <- function(
       !is.na(get(group_var))
   ]
   
-  # Winsorize within heterogeneity group x horizon
-  for (h in horizons) {
-    
-    var <- paste0("diff_", h)
-    wvar <- paste0("w_", var)
-    
-    reg_est[, (wvar) := {
-      q <- quantile(
-        get(var),
-        probs = c(.01, .99),
-        na.rm = TRUE
-      )
-      pmin(pmax(get(var), q[1]), q[2])
-    }, by = group_var]
-  }
-  
   # Results
   groups <- unique(reg_est[[group_var]])
   
@@ -1035,7 +1147,7 @@ run_lp_multiple_shocks_heterogeneity <- function(
     
     for (hh in horizons) {
       
-      var <- paste0("w_diff_", hh)
+      var <- paste0("diff_", hh)
       
       mod <- feols(
         as.formula(
@@ -1073,8 +1185,8 @@ run_lp_multiple_shocks_heterogeneity <- function(
   
   # Confidence intervals
   results[, `:=`(
-    lower90 = coef - 1.64 * se,
-    upper90 = coef + 1.64 * se,
+    lower90 = coef - qnorm(0.95) * se,
+    upper90 = coef + qnorm(0.95) * se,
     lower95 = coef - 1.96 * se,
     upper95 = coef + 1.96 * se
   )]
@@ -1097,16 +1209,10 @@ run_lp_multiple_shocks_heterogeneity <- function(
         yintercept = 0,
         linetype = "dashed"
       ) +
-      geom_ribbon(
-        aes(ymin = lower95, ymax = upper95),
-        alpha = .10,
-        color = NA
-      ) +
-      geom_ribbon(
-        aes(ymin = lower90, ymax = upper90),
-        alpha = .18,
-        color = NA
-      ) +
+      geom_ribbon(aes(ymin = lower95, ymax = upper95),
+        alpha = 0.10, color = NA) +
+      geom_ribbon(aes(ymin = lower90, ymax = upper90),
+        alpha = 0.18, color = NA) +
       geom_line(linewidth = .8) +
       geom_point(size = 2) +
       scale_x_continuous(breaks = horizons) +
@@ -1115,6 +1221,8 @@ run_lp_multiple_shocks_heterogeneity <- function(
         scales = "free_y"
       ) +
       labs(
+        caption = "90% and 95% pointwise confidence intervals",
+        subtitle = paste0("Shock years: ", start_year, "-", end_year),
         x = "Horizon",
         y = "Coefficient",
         color = NULL,
@@ -1132,6 +1240,14 @@ run_lp_multiple_shocks_heterogeneity <- function(
     )
   }
   
+  write_lp_results_csv(
+    results, depvar = outcome, model = "two_shock_lagged_denom_change",
+    shock_instruments = setNames(c(instrument_1, instrument_2), c(shock_1, shock_2)),
+    start_year = start_year, end_year = end_year, controls = controls,
+    denominator = denominator, unit = unit, group_var = group_var,
+    output_suffix = "", outcome_scale = 100,
+    output_dir = results_output_dir
+  )
   return(results[])
 }
 
@@ -1151,6 +1267,7 @@ export_lp_table <- function(
     prefix = "lp",
     digits = 3
 ) {
+  if (!lp_save_outputs()) return(invisible(results))
   
   dt <- copy(as.data.table(results))
   dt <- dt[h %in% horizons]
@@ -1290,6 +1407,7 @@ export_lp_single_table <- function(
     filename,
     digits = 3
 ) {
+  if (!lp_save_outputs()) return(invisible(results))
   
   dt <- copy(as.data.table(results))
   dt <- dt[h %in% horizons]
@@ -1350,3 +1468,31 @@ export_lp_single_table <- function(
   invisible(tab)
 }
 
+
+
+# Two-shock LP robustness: year indicators interacted with log baseline employment.
+# A reference year is omitted because unit FE absorb the time-invariant size term.
+# Delegate estimation/plotting to existing functions so all other settings match.
+run_lp_baseline_size_controls <- function(
+    reg, outcome, denominator = NULL, controls = "",
+    start_year = 2003, end_year = 2008, unit = "area_fips", ...
+) {
+  reg <- copy(reg)
+  stopifnot(all(c(unit, "year", "baseline_emp") %in% names(reg)))
+  # The interaction must use fixed baseline size, not contemporaneous employment.
+  size_check <- reg[, .(n_sizes = uniqueN(baseline_emp[is.finite(baseline_emp)])), by = unit]
+  if (any(size_check$n_sizes > 1L))
+    stop("baseline_emp varies within units; supply a fixed baseline employment measure.")
+  reg[, lp_log_baseline_emp := fifelse(
+    is.finite(baseline_emp) & baseline_emp > 0, log(baseline_emp), NA_real_)]
+  augmented_controls <- paste0(controls,
+    " + i(year, lp_log_baseline_emp, ref = ", as.integer(start_year), ")")
+  args <- c(list(reg = reg, outcome = outcome, controls = augmented_controls,
+    start_year = start_year, end_year = end_year, unit = unit), list(...))
+  if (is.null(denominator)) {
+    do.call(run_lp_ratio_multiple_shocks, args)
+  } else {
+    args$denominator <- denominator
+    do.call(run_lp_multiple_shocks, args)
+  }
+}

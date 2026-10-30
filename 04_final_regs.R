@@ -4,6 +4,7 @@
 path <- "D:/writing_sample/data"
 local <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
 reg <- fread(paste0(path, "/output/transformed_reg.csv"))
+reg <- fread(file.path(path,"output/transformed_reg_aux_2026-10-29.csv"))
 date <- Sys.Date()
 
 
@@ -15,6 +16,30 @@ winsor <- function(dt, var, p = 0.01) {
   dt[, (w_var) := pmin(pmax(get(var), q[1]), q[2])]
 }
 
+
+setorder(reg, area_fips, year)
+
+reg[, outside_jobs_share_resident_emp :=
+      100 * outside_jobs / resident_emp]
+
+reg[, d_outside_jobs_share_resident_emp :=
+      outside_jobs_share_resident_emp -
+      shift(outside_jobs_share_resident_emp),
+    by = area_fips]
+
+winsor(reg, "d_outside_jobs_share_resident_emp")
+
+setorder(reg, area_fips, year)
+
+reg[, workplace_emp_share_resident_emp :=
+      100 * workplace_emp / resident_emp]
+
+reg[, d_workplace_emp_share_resident_emp :=
+      workplace_emp_share_resident_emp -
+      shift(workplace_emp_share_resident_emp),
+    by = area_fips]
+
+winsor(reg, "d_workplace_emp_share_resident_emp")
 setorder(reg, area_fips, year)
 
 reg07 <- reg[year %in% c(2000, 2007)]
@@ -269,10 +294,11 @@ names_dict <- c(
 )
 
 
+
 ################################################################################
 # Final channel tables
 ################################################################################
-final_table <- function(depvar1, depvar2, desc) {
+final_table <- function(depvar1, depvar2 = NULL, desc, include_2019 = FALSE) {
   
   dep_vars <- c(depvar1, depvar2)
   
@@ -293,26 +319,27 @@ final_table <- function(depvar1, depvar2, desc) {
   })
   
   # 2013--2019: effect of prior 2007--2013 exposure --------------------------
-  mods19 <- lapply(dep_vars, function(y) {
+  mods19 <- if (include_2019) lapply(dep_vars, function(y) {
     fml <- as.formula(
       paste0(y, " ~ l_sh_empl_mfg + sh_popfborn + sh_popedu_c + sh_empl_f | lag_IPW_US ~ lag_IPW_OTH")
     )
     feols(fml, data=reg19[year == 2019], weights=~baseline_emp, cluster=~statefip)
-  })
+  }) else list()
   
   # Order: DV1 DV2 within each period
   mods <- c(mods07, mods13, mods19)
-  names(mods) <- c(dep_vars, dep_vars, dep_vars)
+  names(mods) <- rep(dep_vars, if(include_2019) 3L else 2L)
+  periods <- c("2000--2007","2007--2013",if(include_2019) "2013--2019")
   
-  file <- paste0(path, "/../figures/final_channel_", desc, date, ".tex")
+  file <- file.path(motivation_dir,paste0(desc,".tex"))
   
   etable(
     mods,
     dict=names_dict,
     drop=c("Constant", "sh_popfborn", "sh_popedu_c", "l_sh_empl_mfg", "sh_empl_f"),
     extralines=list(
-      "\\midrule Baseline manufacturing share"=rep("$\\checkmark$", 6),
-      "Baseline demographic controls"=rep("$\\checkmark$", 6)
+      "\\midrule Baseline manufacturing share"=rep("$\\checkmark$", length(mods)),
+      "Baseline demographic controls"=rep("$\\checkmark$", length(mods))
     ),
     digits=3,
     style.tex=style.tex(
@@ -321,11 +348,7 @@ final_table <- function(depvar1, depvar2, desc) {
       stats.title="",
       notes.tpt.intro=""
     ),
-    headers=list(
-      "2000--2007"=2,
-      "2007--2013"=2,
-      "2013--2019"=2
-    ),
+    headers=as.list(setNames(rep(length(dep_vars),length(periods)),periods)),
     tex=TRUE,
     file=file,
     replace=TRUE,
@@ -339,8 +362,12 @@ final_table <- function(depvar1, depvar2, desc) {
   x <- x[!grepl("standard-errors in parentheses", x)]
   x <- x[!grepl("Signif\\. Codes", x)]
   
-  i <- grep("2000--2007.*2007--2013.*2013--2019", x)
-  x <- append(x, "\\cmidrule(lr){2-3}\\cmidrule(lr){4-5}\\cmidrule(lr){6-7}", after=i)
+  i <- grep(paste(periods,collapse=".*"),x)
+  rules <- vapply(seq_along(periods),function(k) {
+    first <- 2L+(k-1L)*length(dep_vars)
+    paste0("\\cmidrule(lr){",first,"-",first+length(dep_vars)-1L,"}")
+  },character(1))
+  x <- append(x,paste0(rules,collapse=""),after=i)
   x <- append(x, "\\midrule", after=i+2)
   
   writeLines(x, file)
@@ -352,25 +379,23 @@ final_table <- function(depvar1, depvar2, desc) {
 # Tables
 ################################################################################
 
-# Migration -------------------------------------------------------------------
-final_table(
-  "w_d_returns_3_outflow_share_returns_migration",
-  "w_d_returns_3_outflow_share_returns_migration",
-  "migration_new"
-)
+# All requested outcomes: one table per outcome, preserving the IV specifications.
+motivation_dir <- file.path(path,"../figures/LD_motivation_LP_outcomes_aux_2026-10-29")
+dir.create(motivation_dir,recursive=TRUE,showWarnings=FALSE)
+names_dict <- c(names_dict,
+  "w_ld_migration_total"="Total migration / baseline exemptions",
+  "w_ld_migration_inflow"="Inflow change / baseline exemptions",
+  "w_ld_migration_inward_share"="$\\Delta$ inward share of migration",
+  "w_ld_manufacturing"="$\\Delta$ manufacturing employment share",
+  "w_ld_hhi"="$\\Delta$ industry HHI")
 
-# Add additional channel tables in the same form:
-# final_table("depvar1", "depvar2", "file_name")
-
-# Main commuting --------------------------------------------------------------
-final_table(
-  "w_d_outside_jobs_share_resident_emp",
-  "w_d_outside_jobs_share_population",
-  "commuting"
-)
-
-final_table(
-  "w_d_outside_jobs_share_resident_emp",
-  "w_d_workplace_emp_share_resident_emp",
-  "commuting"
-)
+final_table("w_d_outside_jobs_share_resident_emp",desc="commuting_share_change")
+final_table("w_ld_outside_jobs",desc="commuting_count_change")
+final_table("w_d_labor_force_share_population",desc="labor_force_participation")
+final_table("w_d_unemployed_share_labor_force",desc="unemployment")
+final_table("w_ld_migration_total",desc="migration_total")
+final_table("w_ld_migration_inflow",desc="migration_inflow")
+final_table("w_d_returns_3_outflow_share_returns_migration",desc="migration_outward_share")
+final_table("w_ld_migration_inward_share",desc="migration_inward_share")
+final_table("w_ld_manufacturing",desc="manufacturing")
+final_table("w_ld_hhi",desc="industry_hhi")

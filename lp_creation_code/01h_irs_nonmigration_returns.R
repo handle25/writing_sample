@@ -58,17 +58,20 @@ future_lapply(1990:1991, function(y) {
       # read -------------------------------------------------------------------
       x <- readLines(file, warn=FALSE)
       
-      # keep IRS county total flow ---------------------------------------------
-      x <- x[grepl("^[0-9]{2}\\s+[0-9]{3}\\s+.*County Non-Migrants", x)] # this line changes
-      
-      # extract variables ------------------------------------------------------
+      # Nonmigrant rows are indented; split fields instead of using fixed positions.
+      x <- x[grepl("County Non-Migrants", x, fixed=TRUE)]
+      if (!length(x)) stop("No nonmigrant rows found: ", file)
+      fields <- tstrsplit(trimws(x), "[[:space:]]+")
       dt <- data.table(
-        base_state=as.integer(substr(x, 1, 2)),
-        base_county=as.integer(substr(x, 4, 6)),
-        returns_3=as.numeric(trimws(substr(x, 40, 48))),
-        exemptions_3=as.numeric(trimws(substr(x, 57, 64)))
+        base_state=as.integer(fields[[1]]),
+        base_county=as.integer(fields[[2]]),
+        returns_3=as.numeric(fields[[5]]),
+        exemptions_3=as.numeric(fields[[6]])
       )
-      
+
+      dt[returns_3 < 0, returns_3 := NA_real_]
+      dt[exemptions_3 < 0, exemptions_3 := NA_real_]
+
       # county FIPS ------------------------------------------------------------
       dt[, area_fips := paste0(sprintf("%02d", base_state), sprintf("%03d", base_county))]
       
@@ -421,6 +424,10 @@ dt <- rbindlist(lapply(1990:2021, function(y) {
   fread(paste0(path, "/new_lp_irs_nonmigration_", y, ".csv"))
 }), use.names=TRUE, fill=TRUE)
 
+# Standardize older full labels and newer i/o flow labels before comparing copies.
+dt[flow == "i", flow := "inflow"]
+dt[flow == "o", flow := "outflow"]
+
 # check one observation per county-year-flow ----------------------------------
 dups <- dt[, .N, by=.(area_fips, year, flow)][N != 1]
 print(dups)
@@ -446,4 +453,4 @@ irs_nonmigration <- dt[flow == "inflow", .(
   agi=agi_3
 )]
 
-fwrite(irs_nonmigration, paste0(path, "/new_lp_irs_nonmigration_full.csv"))
+fwrite(irs_nonmigration, paste0(path, "/new_lp_irs_nonmigration_full_2026-10-29.csv"))

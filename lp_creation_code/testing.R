@@ -17,7 +17,8 @@ date <- Sys.Date()
 source("C:/Users/Sophie/Desktop/phd_apps/writing_sample/code/writing_sample/utilities.R")
 run_date <- date
 reg <- fread(paste0(path, "/output/lp_transformed_reg_", run_date, ".csv"))
-# reg <- reg[year != 2009]reg <- reg[year<2020]
+# reg <- reg[year != 2009]
+reg <- reg[year<2020]
 reg <- reg[year>1994]
 
 setorder(reg, area_fips, year)

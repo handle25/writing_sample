@@ -57,6 +57,18 @@ lodes_measure_aux <- fread(paste0(
 ))
 setnames(lodes_measure_aux, "county", "area_fips")
 stopifnot(!anyDuplicated(lodes_measure_aux[, .(area_fips, year)]))
+# 02d now supplies sector counts and composition shares alongside the existing totals.
+sector_count_names <- paste0("aux_com_", rep(c("goods", "trade_transport_utilities",
+  "other_services", "nongoods"), each = 3L), "_", rep(c("jobs", "inside_jobs", "outside_jobs"), 4L))
+if (!all(sector_count_names %in% names(lodes_measure_aux))) {
+  stop("Sector commuting columns missing: rerun 02d_create_lodes_commuting_measures_aux.R before 03.")
+}
+# Earnings counts and shares are included in the same auxiliary commuting merge.
+earnings_count_names <- paste0("aux_com_", rep(c("low_earnings", "middle_earnings", "high_earnings"), each = 3L),
+                              "_", rep(c("jobs", "inside_jobs", "outside_jobs"), 3L))
+if (!all(earnings_count_names %in% names(lodes_measure_aux))) {
+  stop("Earnings commuting columns missing: rerun 02d before 03.")
+}
 # Workplace-based incoming commuting measures from 02e.
 workplace_commuting <- fread(file.path(
   path, "output/new_workplace_commuting_measures_full_1990-2025.csv"
@@ -100,7 +112,7 @@ irs_measure <- fread(paste0(path, "/irs/lp_irs_agi_measures.csv")) |>
   fmutate(area_fips = as.integer(from_area_fips))
 
 # characteristics of migration patterns
-irs_agi <- fread(paste0(path, "/irs/lp_irs_agi_full.csv")) |> 
+irs_agi <- fread(paste0(path, "/irs/lp_irs_agi_full_2026-10-29.csv")) |> 
   fmutate(area_fips = as.integer(area_fips))
 irs_agi[, ln_agi_per_return := log(agi_per_return)]
 setorder(irs_agi, area_fips, year)

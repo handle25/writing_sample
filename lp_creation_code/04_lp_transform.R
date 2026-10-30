@@ -68,6 +68,34 @@ make_share(reg, "aux_outside_jobs", "population")
 make_share(reg, "aux_outside_jobs", "labor_force")
 winsor(reg, "aux_outside_d_jobs")
 
+# Auxiliary-inclusive sector composition shares already come from 02d through 03.
+# Counts are directly usable as LP outcomes/denominators; helpers create their lags.
+# Add population and labor-force normalizations without winsorizing these new outcomes.
+sector_count_vars <- grep(
+  "^aux_com_(goods|trade_transport_utilities|other_services|nongoods)_(jobs|inside_jobs|outside_jobs)$",
+  names(reg), value = TRUE)
+if (length(sector_count_vars) != 12L) {
+  stop("Expected 12 sector commuting count columns; rerun 02d and 03 before 04.")
+}
+for (numerator in sector_count_vars) {
+  for (denominator in c("labor_force", "population")) {
+    reg[, (paste0(numerator, "_share_", denominator)) := fifelse(
+      is.finite(get(denominator)) & get(denominator) > 0,
+      get(numerator) / get(denominator), NA_real_)]
+  }
+}
+# Earnings-group counts/shares from 02d; retain raw values with no additional caps.
+earnings_count_vars <- grep(
+  "^aux_com_(low_earnings|middle_earnings|high_earnings)_(jobs|inside_jobs|outside_jobs)$",
+  names(reg), value = TRUE)
+if (length(earnings_count_vars) != 9L) stop("Expected 9 earnings count columns; rerun 02d and 03.")
+for (numerator in earnings_count_vars) {
+  for (denominator in c("labor_force", "population")) {
+    reg[, (paste0(numerator, "_share_", denominator)) := fifelse(
+      is.finite(get(denominator)) & get(denominator) > 0,
+      get(numerator) / get(denominator), NA_real_)]
+  }
+}
 # LODES employment composition
 
 level_vars <- c(

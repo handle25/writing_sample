@@ -29,6 +29,123 @@ neighbors[, neighbor_merge := 1 ]
 # Full main-plus-auxiliary commuting and network measures.
 # Geographic neighbor shocks are unchanged and remain produced by 02c.
 
+# Industry composition from full main + auxiliary resident-to-workplace flows.
+# SI01 = goods; SI02 = trade/transportation/utilities; SI03 = all other services.
+# These are employment sectors, not separate manufacturing-only counts.
+create_lodes_sector_measures <- function(flows) {
+  required <- c("county", "w_county", "year", "S000", "SI01", "SI02", "SI03")
+  stopifnot(all(required %in% names(flows)))
+  sector_codes <- c(goods = "SI01", trade_transport_utilities = "SI02", other_services = "SI03")
+  sector <- flows[, {
+    inside <- county == w_county
+    values <- list(
+      sector_total_jobs = sum(as.double(S000), na.rm = TRUE),
+      sector_inside_jobs = sum(as.double(S000[inside]), na.rm = TRUE),
+      sector_outside_jobs = sum(as.double(S000[!inside]), na.rm = TRUE)
+    )
+    for (name in names(sector_codes)) {
+      x <- as.double(get(sector_codes[[name]]))
+      # Missing industry data means unknown, including the Census-only years.
+      available <- all(is.finite(x) & x >= 0)
+      values[[paste0("com_", name, "_jobs")]] <- if (available) sum(x) else NA_real_
+      values[[paste0("com_", name, "_inside_jobs")]] <- if (available) sum(x[inside]) else NA_real_
+      values[[paste0("com_", name, "_outside_jobs")]] <- if (available) sum(x[!inside]) else NA_real_
+    }
+    values
+  }, by = .(county, year)]
+
+  # Non-goods combines SI02 and SI03; retain both components separately as well.
+  for (ending in c("jobs", "inside_jobs", "outside_jobs")) {
+    sector[, (paste0("com_nongoods_", ending)) :=
+      get(paste0("com_trade_transport_utilities_", ending)) +
+      get(paste0("com_other_services_", ending))]
+  }
+  divide <- function(numerator, denominator) {
+    fifelse(is.finite(numerator) & is.finite(denominator) & denominator > 0,
+            numerator / denominator, NA_real_)
+  }
+  for (name in c(names(sector_codes), "nongoods")) {
+    total <- sector[[paste0("com_", name, "_jobs")]]
+    inside <- sector[[paste0("com_", name, "_inside_jobs")]]
+    outside <- sector[[paste0("com_", name, "_outside_jobs")]]
+    sector[, (paste0("com_", name, "_share_total_jobs")) := divide(total, sector_total_jobs)]
+    sector[, (paste0("com_", name, "_inside_share_total_jobs")) := divide(inside, sector_total_jobs)]
+    sector[, (paste0("com_", name, "_outside_share_total_jobs")) := divide(outside, sector_total_jobs)]
+    sector[, (paste0("com_", name, "_share_inside_jobs")) := divide(inside, sector_inside_jobs)]
+    sector[, (paste0("com_", name, "_share_outside_jobs")) := divide(outside, sector_outside_jobs)]
+    sector[, (paste0("com_", name, "_inside_share_sector_jobs")) := divide(inside, total)]
+    sector[, (paste0("com_", name, "_outside_share_sector_jobs")) := divide(outside, total)]
+    stopifnot(all(is.na(total) | abs(total - inside - outside) < 1e-8))
+  }
+  # Sector counts must reconcile with the corresponding all-sector flow counts.
+  for (ending in c("jobs", "inside_jobs", "outside_jobs")) {
+    total <- sector[[paste0("sector_", if (ending == "jobs") "total_jobs" else ending)]]
+    components <- sector[[paste0("com_goods_", ending)]] +
+      sector[[paste0("com_trade_transport_utilities_", ending)]] +
+      sector[[paste0("com_other_services_", ending)]]
+    stopifnot(all(is.na(components) | abs(components - total) < 1e-8))
+  }
+  sector[, c("sector_total_jobs", "sector_inside_jobs", "sector_outside_jobs") := NULL]
+  stopifnot(!anyDuplicated(sector[, .(county, year)]))
+  sector[]
+}
+
+
+# Monthly earnings: low <=1250; middle 1251-3333; high >3333 dollars.
+# SE categories are separate from industry categories; no industry-by-earnings cross-tab.
+create_lodes_earnings_measures <- function(flows) {
+  required <- c("county", "w_county", "year", "S000", "SE01", "SE02", "SE03")
+  stopifnot(all(required %in% names(flows)))
+  sector_codes <- c(low_earnings = "SE01", middle_earnings = "SE02", high_earnings = "SE03")
+  sector <- flows[, {
+    inside <- county == w_county
+    values <- list(
+      sector_total_jobs = sum(as.double(S000), na.rm = TRUE),
+      sector_inside_jobs = sum(as.double(S000[inside]), na.rm = TRUE),
+      sector_outside_jobs = sum(as.double(S000[!inside]), na.rm = TRUE)
+    )
+    for (name in names(sector_codes)) {
+      x <- as.double(get(sector_codes[[name]]))
+      # Missing earnings data means unknown, including the Census-only years.
+      available <- all(is.finite(x) & x >= 0)
+      values[[paste0("com_", name, "_jobs")]] <- if (available) sum(x) else NA_real_
+      values[[paste0("com_", name, "_inside_jobs")]] <- if (available) sum(x[inside]) else NA_real_
+      values[[paste0("com_", name, "_outside_jobs")]] <- if (available) sum(x[!inside]) else NA_real_
+    }
+    values
+  }, by = .(county, year)]
+
+  divide <- function(numerator, denominator) {
+    fifelse(is.finite(numerator) & is.finite(denominator) & denominator > 0,
+            numerator / denominator, NA_real_)
+  }
+  for (name in names(sector_codes)) {
+    total <- sector[[paste0("com_", name, "_jobs")]]
+    inside <- sector[[paste0("com_", name, "_inside_jobs")]]
+    outside <- sector[[paste0("com_", name, "_outside_jobs")]]
+    sector[, (paste0("com_", name, "_share_total_jobs")) := divide(total, sector_total_jobs)]
+    sector[, (paste0("com_", name, "_inside_share_total_jobs")) := divide(inside, sector_total_jobs)]
+    sector[, (paste0("com_", name, "_outside_share_total_jobs")) := divide(outside, sector_total_jobs)]
+    sector[, (paste0("com_", name, "_share_inside_jobs")) := divide(inside, sector_inside_jobs)]
+    sector[, (paste0("com_", name, "_share_outside_jobs")) := divide(outside, sector_outside_jobs)]
+    sector[, (paste0("com_", name, "_inside_share_earnings_jobs")) := divide(inside, total)]
+    sector[, (paste0("com_", name, "_outside_share_earnings_jobs")) := divide(outside, total)]
+    stopifnot(all(is.na(total) | abs(total - inside - outside) < 1e-8))
+  }
+  # Earnings-group counts must reconcile with the corresponding all-sector flow counts.
+  for (ending in c("jobs", "inside_jobs", "outside_jobs")) {
+    total <- sector[[paste0("sector_", if (ending == "jobs") "total_jobs" else ending)]]
+    components <- sector[[paste0("com_low_earnings_", ending)]] +
+      sector[[paste0("com_middle_earnings_", ending)]] +
+      sector[[paste0("com_high_earnings_", ending)]]
+    stopifnot(all(is.na(components) | abs(components - total) < 1e-8))
+  }
+  sector[, c("sector_total_jobs", "sector_inside_jobs", "sector_outside_jobs") := NULL]
+  stopifnot(!anyDuplicated(sector[, .(county, year)]))
+  sector[]
+}
+
+
 # Annual LODES commuting measures ---------------------------------------------
 outside <- fread(paste0(lodes_path,"/../raw/full_lodes_data_with_aux_1990-2025.csv"))
 
@@ -83,6 +200,14 @@ commuting[, `:=`(
   com_adjacent_share_all=com_adjacent_jobs/com_resident_emp,
   com_nonadjacent_share_all=com_nonadjacent_jobs/com_resident_emp
 )]
+
+# Additional industry-sector counts and raw composition shares (no winsorization).
+sector_commuting <- create_lodes_sector_measures(outside)
+commuting <- merge(commuting, sector_commuting, by = c("county", "year"), all.x = TRUE)
+
+# Earnings-group counts and shares from the same full resident-to-workplace flows.
+earnings_commuting <- create_lodes_earnings_measures(outside)
+commuting <- merge(commuting, earnings_commuting, by = c("county", "year"), all.x = TRUE)
 
 # External commuting network ------------------------------------------------
 external_network_shock <- merge(

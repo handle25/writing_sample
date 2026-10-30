@@ -11,6 +11,34 @@ states <- tolower(state.abb)
 start <- Sys.time()
 plan(multisession, workers=4)
 
+# County nonmigrants, 1990 -------------------------------------------------------
+# Text files identify these rows explicitly; do not use aggregate code 97.
+# These rows supply returns and exemptions, but no AGI.
+agi_1990_list <- lapply(states, function(state) {
+  folder <- file.path(path,"1990to1991countymigration",
+    "1990to1991CountyMigration","1990to1991CountyMigrationInflow")
+  file <- list.files(folder,pattern=paste0("^C9091",state,"i\\.txt$"),
+    full.names=TRUE,ignore.case=TRUE)
+  if(length(file)!=1) stop("Check 1990 inflow file for ",state)
+  x <- readLines(file,warn=FALSE)
+  x <- x[grepl("County Non-Migrants",x,fixed=TRUE)]
+  if(!length(x)) stop("No 1990 nonmigrant rows for ",state)
+  fields <- tstrsplit(trimws(x),"[[:space:]]+")
+  dt <- data.table(
+    area_fips=paste0(sprintf("%02d",as.integer(fields[[1]])),
+      sprintf("%03d",as.integer(fields[[2]]))),
+    year=1990L,
+    returns=as.numeric(fields[[5]]),
+    exemptions=as.numeric(fields[[6]]),
+    agi=NA_real_,agi_per_return=NA_real_,agi_per_exemption=NA_real_)
+  dt[returns<0,returns:=NA_real_]
+  dt[exemptions<0,exemptions:=NA_real_]
+  dt
+})
+agi_1990 <- rbindlist(agi_1990_list)
+stopifnot(!anyDuplicated(agi_1990[,.(area_fips,year)]))
+fwrite(agi_1990,file.path(path,"lp_irs_agi_county_1990.csv"))
+
 # base agi  --------------------------------------------------------------------
 flows <- c("i")
 future_lapply(c(1995, 1998:2010), function(y_0) {
@@ -153,9 +181,12 @@ files_new <- list.files(path, pattern="^lp_irs_agi_county_", full.names=T)
 agi_new <- rbindlist(lapply(files_new, fread), use.names=T, fill=T)
 
 agi <- rbindlist(list(agi_old, agi_new), use.names=T, fill=T)
+# Exclude imported header/blank rows, whose formatted FIPS can be "NA NA".
+agi <- agi[grepl("^[0-9]{5}$", as.character(area_fips))]
 setorder(agi, area_fips, year)
+stopifnot(!anyDuplicated(agi[, .(area_fips, year)]))
 
-fwrite(agi, paste0(path, "/lp_irs_agi_full.csv"))
+fwrite(agi, paste0(path, "/lp_irs_agi_full_2026-10-29.csv"))
 
 # outflows ---------------------------------------------------------------------
 flows <- c("o")

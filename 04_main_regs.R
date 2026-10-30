@@ -4,6 +4,7 @@
 path <- "D:/writing_sample/data"
 local <- "C:/Users/Sophie/Desktop/phd_apps/writing_sample/data"
 reg <- fread(paste0(path, "/output/transformed_reg.csv"))
+reg <- fread(paste0(path, "/output/transformed_reg_aux_2026-10-29.csv"))
 date <- Sys.Date()
 
 
@@ -14,6 +15,7 @@ winsor <- function(dt, var, p = 0.01) {
   
   dt[, (w_var) := pmin(pmax(get(var), q[1]), q[2])]
 }
+
 
 setorder(reg, area_fips, year)
 
@@ -107,12 +109,14 @@ baseline <- function(
     fml <- as.formula(
       paste0(y, " ~ t2 ", " | ", shock_us, " ~ ", shock_oth)
     )
-    feols(
+    mod <- feols(
       fml,
       data = reg[year %in% c(2000, 2007)],
       weights = ~baseline_emp,
       cluster = ~statefip
     )
+    print(summary(mod, stage = 1))
+    mod
   })
   
   mods07_lsh <- lapply(dep_vars, function(y) {
@@ -120,12 +124,14 @@ baseline <- function(
     fml <- as.formula(
       paste0(y, " ~  t2 + l_sh_empl_mfg", " | ", shock_us, " ~ ", shock_oth)
     )
-    feols(
+    mod <- feols(
       fml,
       data = reg[year %in% c(2000, 2007)],
       weights = ~baseline_emp,
       cluster = ~statefip
     )
+    print(summary(mod, stage = 1))
+    mod
   })
   
   mods07_ctl <- lapply(dep_vars, function(y) {
@@ -133,12 +139,14 @@ baseline <- function(
     fml <- as.formula(
       paste0(y, " ~  t2  + l_sh_empl_mfg + sh_popfborn + sh_popedu_c + sh_empl_f ", " | ", shock_us, " ~ ", shock_oth)
     )
-    feols(
+    mod <- feols(
       fml,
       data = reg[year %in% c(2000, 2007)],
       weights = ~baseline_emp,
       cluster = ~statefip
     )
+    print(summary(mod, stage = 1))
+    mod
   })
   
   reg <- reg13
@@ -148,36 +156,42 @@ baseline <- function(
     fml <- as.formula(
       paste0(y, " ~  t2 ", " | ", shock_us, " ~ ", shock_oth)
     )
-    feols(
+    mod <- feols(
       fml,
       data = reg[year %in% c(2007, 2013)],
       weights = ~baseline_emp,
       cluster = ~statefip
     )
+    print(summary(mod, stage = 1))
+    mod
   })
   mods13_lsh <- lapply(dep_vars, function(y) {
     reg[, t2 := as.integer(year == 2013)]
     fml <- as.formula(
       paste0(y, " ~  t2  + l_sh_empl_mfg ", " | ", shock_us, " ~ ", shock_oth)
     )
-    feols(
+    mod <- feols(
       fml,
       data = reg[year %in% c(2007, 2013)],
       weights = ~baseline_emp,
       cluster = ~statefip
     )
+    print(summary(mod, stage = 1))
+    mod
   })
   mods13_ctl <- lapply(dep_vars, function(y) {
     reg[, t2 := as.integer(year == 2013)]
     fml <- as.formula(
       paste0(y, " ~  t2  + l_sh_empl_mfg + sh_popfborn + sh_popedu_c + sh_empl_f  ", " | ", shock_us, " ~ ", shock_oth)
     )
-    feols(
+    mod <- feols(
       fml,
       data = reg[year %in% c(2007, 2013)],
       weights = ~baseline_emp,
       cluster = ~statefip
     )
+    print(summary(mod, stage = 1))
+    mod
   })
   
   
@@ -187,34 +201,40 @@ baseline <- function(
     fml <- as.formula(
       paste0(y, " ~  1  ", " | lag_IPW_US ~ lag_IPW_OTH")
     )
-    feols(
+    mod <- feols(
       fml,
       data = reg[year %in% c(2019)],
       weights = ~baseline_emp,
       cluster = ~statefip
     )
+    print(summary(mod, stage = 1))
+    mod
   })
   mods19_lsh <- lapply(dep_vars, function(y) {
     fml <- as.formula(
       paste0(y, " ~  1+  l_sh_empl_mfg | lag_IPW_US ~ lag_IPW_OTH")
     )
-    feols(
+    mod <- feols(
       fml,
       data = reg[year %in% c(2019, 2019)],
       weights = ~baseline_emp,
       cluster = ~statefip
     )
+    print(summary(mod, stage = 1))
+    mod
   })
   mods19_ctl <- lapply(dep_vars, function(y) {
     fml <- as.formula(
       paste0(y, " ~ 1 +  l_sh_empl_mfg + sh_popfborn + sh_popedu_c + sh_empl_f | lag_IPW_US ~ lag_IPW_OTH")
     )
-    feols(
+    mod <- feols(
       fml,
       data = reg[year %in% c(2019, 2019)],
       weights = ~baseline_emp,
       cluster = ~statefip
     )
+    print(summary(mod, stage = 1))
+    mod
   })
   
   mods <- c(mods07_ctl, mods13_ctl)
@@ -315,6 +335,12 @@ baseline(
   "d_sh_empl_mfg",
   "d_sh_empl_mfg"
 )
+baseline(
+  "d_outside_jobs_share_resident_emp",
+  "d_outside_jobs_share_resident_emp"
+)
+
+
 
 baseline(
   "d_sh_empl_mfg",
